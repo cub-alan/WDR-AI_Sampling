@@ -12,8 +12,7 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 # 1. PATH SETUP
 # -----------------------------
 BASE_PATH = Path.cwd()
-
-CONFIG_NAME = "sam2.1_hiera_small.yaml"   # ⚠️ MUST match checkpoint
+CONFIG_NAME = "sam2.1_hiera_small.yaml" 
 CHECKPOINT_PATH = BASE_PATH / "sam2.1_hiera_small.pt"
 IMAGE_PATH = BASE_PATH / "Test.jpeg"
 
