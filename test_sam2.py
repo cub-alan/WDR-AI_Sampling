@@ -46,7 +46,7 @@ initialize(config_path="configs", version_base=None)
 sam2 = build_sam2(
     config_file=CONFIG_NAME,
     ckpt_path=str(CHECKPOINT_PATH),
-    device="cpu"   # ✅ prevents CUDA error
+    device="cpu"   #  prevents CUDA error
 )
 
 mask_generator = SAM2AutomaticMaskGenerator(sam2)
@@ -57,7 +57,7 @@ mask_generator = SAM2AutomaticMaskGenerator(sam2)
 image = cv2.imread(str(IMAGE_PATH))
 
 if image is None:
-    print("❌ Could not load image")
+    print("Could not load image")
     exit()
 
 image = cv2.resize(image, (640, 480))
@@ -68,7 +68,7 @@ image = cv2.resize(image, (640, 480))
 print("\nGenerating masks...")
 masks = mask_generator.generate(image)
 
-print(f"✅ SAM2 working! Found {len(masks)} masks")
+print(f" SAM2 working! Found {len(masks)} masks")
 
 # -----------------------------
 # 8. VISUALISE RESULTS
