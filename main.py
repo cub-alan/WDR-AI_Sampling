@@ -40,10 +40,10 @@ from transformers import CLIPModel, CLIPProcessor
 
 
 
-WDR_Webserver_URL = "http://localhost:8000" # URL of the WDR webserver to send data to once processed 
-Cam1_URL = "http://172.20.10.3/stream1" # URL of the first camera stream
-Cam2_URL = "http://172.20.10.5/stream2" # URL of the second camera stream
-GNSS_URL = "http://172.20.10.3/status" # URL of the GNSS data stream
+WDR_Webserver_URL = "http://wdr.local:8000" # URL of the WDR webserver to send data to once processed 
+Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
+Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
+GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
 FPS = 20 # Desired frames per second for processing
 Frame_Interval = 1.0 / FPS # Time interval between frames
 
