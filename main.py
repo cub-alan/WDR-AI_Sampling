@@ -9,11 +9,6 @@
 
 #import the libraries needed to run the install requirements function
 import os
-import subprocess
-import sys
-    
-subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]) # ensure all required libraries are installed before running
-
 import cv2 # open cv library
 import time
 import numpy as np # for numerical operations on large image matricies 
@@ -39,6 +34,7 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 #BioCLIP imports
 from transformers import CLIPModel, CLIPProcessor 
 
+
 # test URLs 
 Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
@@ -49,7 +45,8 @@ WDR_Webserver_URL = "http://wdr.local:8000" # URL of the WDR webserver to send d
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 #GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
-FPS = 20 # Desired frames per second for processing
+
+FPS = 2 # Desired frames per second for processing
 Frame_Interval = 1.0 / FPS # Time interval between frames
 
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
@@ -58,8 +55,10 @@ os.makedirs(Sample_Folder, exist_ok=True)
 # initialize shared variables
 GNSS_New = {"lat": 0, "lon": 0, "valid": 0 , "sats": 0} # variable to get newest gnss data
 GNSS_Lock = Lock() # mutex lock for safely updating the GNSS data variable
+
 Targets = ["Dandelion", "Thistle", "Bindweed", "Clover"] # list of detected weeds
 Targets_Lock = Lock() # mutex lock for safely updating targets
+
 Q_Sample = Queue(maxsize=100) # queue to manage image processing 
 
 # create the paths for the SAM2 model config and checkpoint
@@ -71,27 +70,29 @@ flask_app = Flask(__name__)
 
 @flask_app.route('/api/upload_file', methods=['POST'])
 def upload_file():
-    fname = request.headers.get('File-Name', f"upload_{int(time.time())}.jpg")
-    fpath = os.path.join(Sample_Folder, fname)
-    with open(fpath, 'wb') as f:
+    File_Name = request.headers.get('File-Name', f"upload_{int(time.time())}.jpg")
+    File_Path = os.path.join(Sample_Folder, File_Name)
+    with open(File_Path, 'wb') as f:
         f.write(request.data)
-    print(f"Received SD Image: {fname}")
+    print(f"Received SD Image: {File_Name}")
     return "OK", 200
 
 def start_receiver():
     # Use port 5000 so website.py can use 8000
     flask_app.run(host='0.0.0.0', port=5000)
 
-# --- OFFLINE/SD DATA PROCESSOR ---
+
 def SD_Receiver():
     while True:
         try:
             files = sorted(os.listdir(Sample_Folder))
             for f in files:
-                if not f.endswith('.jpg'): continue
+                if not f.endswith('.jpg'): 
+                    continue
                 
                 parts = f.replace('.jpg', '').split('_')
-                if len(parts) < 2: continue
+                if len(parts) < 2: 
+                    continue
                 
                 cam_name, sample_id = parts[0], parts[1]
                 fpath = os.path.join(Sample_Folder, f)
@@ -120,6 +121,7 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
         self.url = url # URL of the camera stream
         self.name = name # given name for the camera (mostly for debugging purposes)
         self.capture = cv2.VideoCapture(self.url) # OpenCV function to get the video streams from the URL
+        self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1) # set the buffer size to 1 to reduce latency and ensure we are getting the most recent frame from the stream
         self.Frame = None # variable for current frame received from the stream
         self.ret = False  # variable to show if frame capture was successfully
         self.lock = Lock() # create a mutex to handle the camera stream
@@ -137,6 +139,7 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
                     time.sleep(1) # if capture failed, add delay before trying again to allow for queue to continue
                     self.capture.release() # remove the current capture as it didnt retreive correctly
                     self.capture = cv2.VideoCapture(self.url) # reinitialize capture to attempt to fix the retrieval error
+                    self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1) # set the buffer size to 1 to reduce latency and ensure we are getting the most recent frame from the stream
 
     def Get_Frame(self): # function to retrieve the current frame from the stream
         with self.lock: # acquire the mutex lock to safely access the frame variable
@@ -181,8 +184,9 @@ def Get_GNSS(): # function to continuously get the latest GNSS data from the str
                 GNSS_New.update(GNSS_Data) # update the global variable with the new gnss data
         except Exception as error:
             print(error) # if there is an error skip and then try again
-            pass
-        time.sleep(1) # add a delay before trying again to avoid overwhelming the server
+            time.sleep(1) # add a delay before trying again to avoid overwhelming the server
+            continue
+        
 
 def Plant_Filter():
     global Targets
@@ -212,7 +216,7 @@ def Sample_Process(Stream1,Stream2):
                 try:
                     Q_Sample.put_nowait(Sample) # add the sample to the processing queue without blocking
                 except Full:
-                    pass
+                    print("Queue full - dropping frame")
 
         Time_Diff = time.time() - start_time # calculate the time taken to process the frame
         time.sleep(max(0, Frame_Interval - Time_Diff)) # add a delay to maintain the desired frame rate
@@ -227,6 +231,17 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
     for mask in masks: # loop through each generated mask
         x, y, w, h = [int(v) for v in mask["bbox"]] # get the bounding box of the mask
+
+        # clamp to image bounds >>> FIX
+        h_img, w_img = frame.shape[:2]
+        x = max(0, min(x, w_img-1))
+        y = max(0, min(y, h_img-1))
+        w = max(1, min(w, w_img - x))
+        h = max(1, min(h, h_img - y))
+
+        if w < 20 or h < 20:
+            continue
+        
         cropped_image = frame[y:y+h, x:x+w] # crop the image to the
         if cropped_image.size == 0: # if the cropped image is empty skip to the next mask
             continue
@@ -244,7 +259,8 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         label = Targets[top_idx] # get the label of the predicted target
 
         if confidence > 0.6: # if the confidence is above a threshold, consider it a detected target
-            detected_targets.append({"label": label, "confidence": confidence, "bbox": mask["bbox"]}) # add the detected target to the list with its label, confidence, and bounding box
+            detected_targets.append({"label": label, "confidence": confidence, "bbox": (x, y, w, h)}) # add the detected target to the list with its label, confidence, and bounding box
+
     return detected_targets # return the list of detected targets
 
 def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
@@ -273,10 +289,14 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
 
             for target in Detected_Targets: # loop through each detected target and print its information
                 print(f"Detected {target['label']} with confidence {target['confidence']:.2f} at {TimeStamp} from {cam_name}")
-                x,y,w,h = target['bbox']
+
+                x,y,w,h = map(int, target['bbox'])
+
+                if w > 0 and h > 0:
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
+
                 labels_list.append(target['label'])
 
-                cv2.rectangle(frame, (x,y), (x+w, y+h), (0,255,0), 2) # draw a rectangle around the detected target on the frame
                 cv2.putText(frame, f"{target['label']} {target['confidence']:.2f}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2) # add a label with the target name and confidence above the rectangle
 
 
@@ -290,7 +310,10 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
                 "lon": gnss.get("lon", 0),
                 "timestamp": TimeStamp
             }
-            requests.post(f"{WDR_Webserver_URL}/add_detection", json=payload)
+            try:
+                requests.post(f"{WDR_Webserver_URL}/add_detection", json=payload, timeout=3)
+            except Exception as error:
+                print(f"Error sending data to webserver: {error}")
 
         except Empty:
             continue # if the queue is empty, continue to the next iteration
