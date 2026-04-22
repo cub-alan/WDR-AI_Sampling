@@ -9,6 +9,7 @@
 
 #import the libraries needed to run the install requirements function
 import os
+import sys
 import cv2 # open cv library
 import time
 import numpy as np # for numerical operations on large image matricies 
@@ -36,9 +37,9 @@ from transformers import CLIPModel, CLIPProcessor
 
 
 # test URLs 
-Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
-Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
-GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
+Cam1_URL = "http://172.20.10.5:80/stream1"
+GNSS_URL = "http://172.20.10.5:80/status"
+Cam2_URL = "http://172.20.10.6:80/stream2"
 
 # Actual URLs
 WDR_Webserver_URL = "http://wdr.local:8000" # URL of the WDR webserver to send data to once processed 
@@ -81,38 +82,49 @@ def start_receiver():
     # Use port 5000 so website.py can use 8000
     flask_app.run(host='0.0.0.0', port=5000)
 
+def cameras_active(cam1, cam2):
+    r1, _ = cam1.Get_Frame()
+    r2, _ = cam2.Get_Frame()
+    return r1 or r2
 
-def SD_Receiver():
+def SD_Receiver(Cam1,Cam2):
     while True:
         try:
-            files = sorted(os.listdir(Sample_Folder))
-            for f in files:
-                if not f.endswith('.jpg'): 
-                    continue
-                
-                parts = f.replace('.jpg', '').split('_')
-                if len(parts) < 2: 
-                    continue
-                
-                cam_name, sample_id = parts[0], parts[1]
-                fpath = os.path.join(Sample_Folder, f)
-                
-                img = cv2.imread(fpath)
-                if img is not None:
+            # ONLY PROCESS DISK IF SYSTEM IS IDLE
+            if not cameras_active(Cam1, Cam2):
+
+                files = sorted(os.listdir(Sample_Folder))
+                for f in files:
+                    if not f.endswith('.jpg'):
+                        continue
+
+                    fpath = os.path.join(Sample_Folder, f)
+
+                    img = cv2.imread(fpath)
+                    if img is None:
+                        continue
+
                     sample = {
                         "frame": img,
-                        "GNSS": {"lat": 0, "lon": 0, "valid": False}, 
-                        "timestamp": f"SD_{sample_id}",
-                        "Cam": cam_name
+                        "GNSS": {"lat": 0, "lon": 0, "valid": False},
+                        "timestamp": f"SD_{f}",
+                        "Cam": "SD"
                     }
+
                     try:
                         Q_Sample.put(sample, timeout=1)
                         os.remove(fpath)
+                        print(f"[SD] Processed: {f}")
                     except Full:
-                        time.sleep(1)
+                        break  # stop trying if queue fills again
+
+            else:
+                time.sleep(0.5)
+
         except Exception as e:
-            print(f"Offline Processor error: {e}")
-        time.sleep(2)
+            print(f"[SD ERROR] {e}")
+
+        time.sleep(1)
 
 
 class Camera_CLASS: # a class to receive and process streams from both cameras
@@ -216,8 +228,15 @@ def Sample_Process(Stream1,Stream2):
                 try:
                     Q_Sample.put_nowait(Sample) # add the sample to the processing queue without blocking
                 except Full:
-                    print("Queue full - dropping frame")
+                    # SAVE TO DISK INSTEAD OF DROPPING
+                    filename = f"{s.name}_{int(time.time()*1000)}.jpg"
+                    filepath = os.path.join(Sample_Folder, filename)
 
+                    try:
+                        cv2.imwrite(filepath, frame)
+                    except Exception as error:
+                        print(f"[ERROR] Failed to save overflow frame: {error}")
+                        
         Time_Diff = time.time() - start_time # calculate the time taken to process the frame
         time.sleep(max(0, Frame_Interval - Time_Diff)) # add a delay to maintain the desired frame rate
 
@@ -228,6 +247,8 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
     
     detected_targets = [] # list to store detected targets
     masks = SAM_Mask.generate(frame) # generate segmentation masks for the frame using SAM2
+
+    print(f"[SAM] Masks generated: {len(masks)}")
 
     for mask in masks: # loop through each generated mask
         x, y, w, h = [int(v) for v in mask["bbox"]] # get the bounding box of the mask
@@ -258,6 +279,8 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         confidence = probs[0][top_idx].item() # get the confidence of the prediction
         label = Targets[top_idx] # get the label of the predicted target
 
+        print(f"[CLIP] Top: {label} ({confidence:.2f})")
+
         if confidence > 0.6: # if the confidence is above a threshold, consider it a detected target
             detected_targets.append({"label": label, "confidence": confidence, "bbox": (x, y, w, h)}) # add the detected target to the list with its label, confidence, and bounding box
 
@@ -278,13 +301,16 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             gnss = Sample["GNSS"] # get the GNSS data from the sample
             cam_name = Sample["Cam"] # get the camera name from the sample
 
+            print(f"[AI] Processing frame from {cam_name} | Queue size: {Q_Sample.qsize()}")
+
             if gnss.get("valid"):
                 TimeStamp = f"{gnss.get('h',0):02}:{gnss.get('m',0):02}:{gnss.get('s',0):02}" # create a timestamp string with the GNSS data
             else:
                 TimeStamp = Sample["timestamp"] # if GNSS data is not valid, use the sample timestamp
             
             Detected_Targets = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, Current_Targets) # process the frame to detect targets
-
+            if not Detected_Targets:
+                print(f"[AI] No targets detected at {TimeStamp}")
             labels_list = []
 
             for target in Detected_Targets: # loop through each detected target and print its information
@@ -320,6 +346,13 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
         except Exception as error:
             print(error) # if there is an error during processing, print the error and continue to the next iteration
 
+def Camera_Debug(Cam1, Cam2):
+    while True:
+        r1, _ = Cam1.Get_Frame()
+        r2, _ = Cam2.Get_Frame()
+        print(f"[CAM] Cam1: {'OK' if r1 else 'FAIL'} | Cam2: {'OK' if r2 else 'FAIL'}")
+        time.sleep(5)
+
 def main():
 
     SAM_Mask, Bio_model, Bio_processor, device = Init_Libs() # initialize the SAM2 and BioCLIP models
@@ -336,8 +369,9 @@ def main():
     Thread(target=Get_GNSS, daemon=True).start() # start the thread to continuously get the latest GNSS data
     Thread(target=Plant_Filter, daemon=True).start() # start the thread to continuously get the latest plant filters from the webserver
     Thread(target=start_receiver, daemon=True).start()
-    Thread(target=SD_Receiver, daemon=True).start()
+    Thread(target=SD_Receiver, args=(Cam1, Cam2), daemon=True).start()
     Thread(target=Sample_Process, args=(Cam1, Cam2), daemon=True).start() # start the thread to continuously process the camera samples
+    Thread(target=Camera_Debug, args=(Cam1, Cam2), daemon=True).start()
 
     AI_Loop(SAM_Mask, Bio_model, Bio_processor, device)
 
