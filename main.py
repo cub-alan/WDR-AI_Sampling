@@ -39,10 +39,16 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 #BioCLIP imports
 from transformers import CLIPModel, CLIPProcessor 
 
-WDR_Webserver_URL = "http://wdr.local:8000" # URL of the WDR webserver to send data to once processed 
+# test URLs 
 Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
+
+# Actual URLs
+WDR_Webserver_URL = "http://wdr.local:8000" # URL of the WDR webserver to send data to once processed 
+#Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
+#Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
+#GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
 FPS = 20 # Desired frames per second for processing
 Frame_Interval = 1.0 / FPS # Time interval between frames
 
