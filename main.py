@@ -48,13 +48,11 @@ WDR_Webserver_URL = f"http://localhost:{PORT}"
 
 # test URLs 
 Cam1_URL = "http://172.20.10.5:80/stream1"
-GNSS_URL = "http://172.20.10.5:80/status"
 Cam2_URL = "http://172.20.10.6:80/stream2"
 
 # Actual URLs
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
-#GNSS_URL = "http://192.168.4.138/status" # URL of the GNSS data stream
 
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
 DATA_DIR = "data"
@@ -90,13 +88,6 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 def index():
     return app.send_static_file("website.html")
 
-@app.route("/status")
-def status():
-    try:
-        return requests.get(GNSS_URL, timeout=2).json()
-    except:
-        return {"valid":False,"lat":0,"lon":0,"sats":0}
-    
 @app.route("/Archeive", methods=["POST"])
 def Archeive():
     data = request.json
@@ -157,17 +148,48 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
         self.thread.start() # start the thread
 
     def Updater(self): # function that continuously captures frames from the stream
-        while self.running: # while the stream is active
-            ret, frame = self.capture.read() # read a frame from the stream
-            with self.lock: # acquire the mutex lock to safely update the frame variable
-                self.ret = ret # update the capture success variable
-                if ret: # if the frame was successfully captured
-                    self.Frame = frame # update the current frame variable
-                else:
-                    time.sleep(1) # if capture failed, add delay before trying again to allow for queue to continue
-                    self.capture.release() # remove the current capture as it didnt retreive correctly
-                    self.capture = cv2.VideoCapture(self.url) # reinitialize capture to attempt to fix the retrieval error
-                    self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1) # set the buffer size to 1 to reduce latency and to get the most recent frame from the stream
+        while self.running:
+            try:
+                # Use requests to get stream so we can see HEADERS
+                resp = requests.get(self.url, stream=True, timeout=5)
+                if resp.status_code != 200:
+                    time.sleep(2)
+                    continue
+
+                bytes_data = b''
+                for chunk in resp.iter_content(chunk_size=2048):
+                    bytes_data += chunk
+                    
+                    # Find JPEG Start/End
+                    a = bytes_data.find(b'\xff\xd8')
+                    b = bytes_data.find(b'\xff\xd9')
+                    
+                    if a != -1 and b != -1:
+                        # 1. Look for X-GNSS in the header block before the JPEG start
+                        header_block = bytes_data[:a].decode('utf-8', errors='ignore')
+                        if "X-GNSS:" in header_block:
+                            try:
+                                json_str = header_block.split("X-GNSS:")[1].split("\r\n")[0].strip()
+                                gnss_data = json.loads(json_str)
+                                with GNSS_Lock:
+                                    GNSS_New.update(gnss_data)
+                            except: pass
+
+                        # 2. Extract and decode Image
+                        jpg = bytes_data[a:b+2]
+                        bytes_data = bytes_data[b+2:]
+                        
+                        img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                        if img is not None:
+                            with self.lock:
+                                self.Frame = img
+                                self.ret = True
+                            # Support the website preview
+                            with Frame_Lock:
+                                Latest_Frame[self.name] = img.copy()
+            except:
+                time.sleep(2)
+
 
     def Get_Frame(self): # function to retrieve the current frame from the stream
         with self.lock: # acquire the mutex lock to safely access the frame variable
@@ -192,6 +214,7 @@ def generate_stream(cam):
 
 @app.route("/stream1")
 def stream1():
+    with GNSS_Lock: return json.dumps(GNSS_New)
     return Response(generate_stream("Cam1"),
         mimetype='multipart/x-mixed-replace; boundary=frame')
 

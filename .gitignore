@@ -15,3 +15,5 @@ Thumbs.db
 
 # Large model files (optional but recommended)
 *.pt
+
+Sample_Queue/
