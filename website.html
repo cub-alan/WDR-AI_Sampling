@@ -1,0 +1,469 @@
+<!DOCTYPE html> <!-- tells the browser that it's in html -->
+<html> 
+<head> <!-- anything in head is a setting -->
+
+<title>Weed Detection Robot</title> <!-- title of the webpage -->
+<meta name="viewport" content="width=device-width, initial-scale=1"> <!-- makes the page scale correctly to both pc and mobile -->
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script> <!-- Leaflet Map Library used for field mapping -->
+
+<style> /* CSS styling for the webpage */
+
+body{ /* style function for the whole page */
+    font-family: "Times New Roman", Times, serif; /* all fonts on the page in rimes new roman */
+    background: #7bcae0; /* background color of the page */
+    color: #000000; /* default text color */
+    margin: 0; /* removes default margin */
+    display: flex; /* enables flexbox layout */
+    flex-direction: column; /* boxes created are stacked vertically */
+    align-items: center; /* centers the boxes on the page */
+}
+
+.container{ /* creates the camera container box */
+    width: 100%; /* makes the box take up the full width of the page */
+    max-width: 640px; /* limits the width of the box to 640px to keep it in a 4:3 aspect ratio */
+    padding: 20px; 
+    box-sizing: border-box;
+}
+
+.header{ /* header box that has the title */
+    display: flex; /* enables flexbox layout */
+    justify-content: space-between; /* ensures the boxes are either side of the header */
+    align-items: center; /* centers the boxes vertically within the header */
+    margin-bottom: 20px; 
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+}
+
+h1{ /* title text styling */
+    font-size: 24px;
+    margin: 0;
+    color: #000000;
+    text-transform: uppercase; /* makes all text uppercase */
+    letter-spacing: 2px; /* adds 2 pixel spacing between each letter*/
+}
+
+.navbar { /* navigation bar for the 4 pages */
+    display: flex;
+    gap: 4px; /* adds 4 pixels of space between each button */
+    margin-bottom: 20px; /* adds 20 pixels of space below the navbar */
+}
+
+.nav-btn { /* style for the navbar buttons */
+    flex: 1; /* makes each button take up an equal amount of space */
+    padding: 10px; 
+    background: #000000;
+    color: #666666;
+    border: none;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer; /* changes the cursor to a pointer when hovering over one of the buttons*/
+    border-radius: 8px;
+    transition: all 0.2s; /* adds a transition effect to the button */
+}
+
+.nav-btn.active {
+    background: #151619;
+    color: #fff;
+    border-bottom: 2px solid #079AF0;
+}
+
+.cam-tabs {
+    display: flex;
+    width: 50%;
+    gap: 2px;
+    margin-bottom: 4px;
+}
+
+.cam-btn {
+    flex: 1;
+    padding: 10px;
+    background: #000;
+    color: #666;
+    border: none;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.cam-btn.active {
+    background: #151619;
+    color: #fff;
+    border-bottom: 2px solid #079AF0;
+}
+
+.stream-box {
+    background: #000;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+    border: 1px solid #222;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+}
+
+.stream-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: none;
+}
+
+.stream-box img.active {
+    display: block;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    z-index: 5;
+}
+
+.loading-overlay.active {
+    display: flex;
+}
+
+.stream-label {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    pointer-events: none;
+}
+
+#map {
+    width: 100%;
+    height: 300px;
+    margin-top: 20px;
+    border-radius: 12px;
+    border: 1px solid #222;
+}
+
+.data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.data-card {
+    background: #000000;
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid #222;
+    transition: border-color 0.3s;
+}
+
+.data-card:first-child {
+    grid-column: span 2;
+}
+
+.label {
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.value {
+    font-size: 16px;
+    font-weight: 600;
+    font-family: "JetBrains Mono", monospace;
+    color: #fff;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-locked {
+    background: #4caf50;
+}
+
+.status-searching {
+    background: #f44336;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+.dots::after {
+    content: '.';
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%,32% {content: '.';}
+    33%,65% {content: '..';}
+    66%,100% {content: '...';}
+}
+
+</style>
+</head>
+<body> <!-- anything in body is visible content -->
+<div class="container">
+    <div class="header">
+        <h1>Weed Detection Robot</h1>
+        <div id="clock" style="font-size:12px;color:#666;">ONLINE</div>
+    </div>
+    <div class="navbar">
+        <button id="nav1" class="nav-btn active" onclick="showPage(1)">Live</button>
+        <button id="nav2" class="nav-btn" onclick="showPage(2)">Map</button>
+        <button id="nav3" class="nav-btn" onclick="showPage(3)">Archive</button>
+        <button id="nav4" class="nav-btn" onclick="showPage(4)">Filters</button>
+    </div>
+
+    <div id="page1">
+
+        <div class="stream-box">
+            <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
+            <img src="/stream" id="stream-primary" class="active" referrerpolicy="no-referrer" onload="hideLoading()" onerror="showError()">
+            <img src="" id="stream-secondary" alt="Secondary Feed Offline" onload="hideLoading()" onerror="showError()" referrerpolicy="no-referrer">
+            <div id="active-label" class="stream-label" style="display:none">Primary Feed</div>
+        </div>
+        <div class="cam-tabs" style="margin-top:8px;">
+            <button id="btn-cam1" class="cam-btn active" onclick="switchCam(1)">Cam 1</button>
+            <button id="btn-cam2" class="cam-btn" onclick="switchCam(2)">Cam 2</button>
+        </div>
+
+        <!-- MAP and field mapping button removed from Live page -->
+        <div class="data-grid">
+            <div class="data-card">
+                <div class="label">GNSS Status</div>
+                <div class="value" id="gps-status">
+                    Finding<span class="dots"></span>
+                </div>
+            </div>
+            <div class="data-card">
+                <div class="label">GPS Time (UTC)</div>
+                <div class="value" id="gps-time">00:00:00</div>
+            </div>
+            <div class="data-card">
+                <div class="label">Altitude</div>
+                <div class="value" id="alt">0.00 m</div>
+            </div>
+            <div class="data-card">
+                <div class="label">Satellites</div>
+                <div class="value" id="sats">0</div>
+            </div>
+            <div class="data-card">
+                <div class="label">Coordinates</div>
+                <div class="value" id="coords">0.000000 N, 0.000000 W</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page2" style="display:none;">
+        <h2>Map</h2>
+        <div id="map"></div>
+        <button id="fieldBtn" class="cam-btn" style="margin:10px auto 0; display:block; width:50%; border-radius:8px;" onclick="toggleField()">Create Field Map</button>
+    </div>
+    <div id="page3" style="display:none;">
+        <h2>Archive</h2>
+        <div id="archive-list">
+            <!-- timestamp boxes will be injected here -->
+        </div>
+    </div>
+    <div id="page4" style="display:none;">
+        <h2>Filters</h2>
+        <p>Filter settings will go here.</p>
+    </div>
+    <div id="page3" style="display:none;">
+        <h2>Filters</h2>
+        <p>Filter settings will go here.</p>
+    </div>
+</div>
+<script>
+var map = null;
+var marker = null;
+
+// field mapping state
+let fieldTracking = false;
+let fieldCoords = [];
+let fieldPolygon = null;
+
+// util for loader overlay
+function showLoading(msg = 'Connecting') {
+    const loading = document.getElementById('cam-loading');
+    loading.innerHTML = msg + '<span class="dots"></span>';
+    loading.classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('cam-loading').classList.remove('active');
+}
+
+function showError() {
+    const loading = document.getElementById('cam-loading');
+    const btn2 = document.getElementById('btn-cam2');
+    if (btn2.classList.contains('active')) {
+        loading.innerHTML = 'Connection Failed';
+    } else {
+        loading.innerHTML = 'Connecting<span class="dots"></span>';
+    }
+    loading.classList.add('active');
+}
+
+function showPage(id) {
+    document.getElementById('page1').style.display = id === 1 ? 'block' : 'none';
+    document.getElementById('page2').style.display = id === 2 ? 'block' : 'none';
+    document.getElementById('page3').style.display = id === 3 ? 'block' : 'none';
+    document.getElementById('page4').style.display = id === 4 ? 'block' : 'none';
+    
+    document.getElementById('nav1').classList.toggle('active', id === 1);
+    document.getElementById('nav2').classList.toggle('active', id === 2);
+    document.getElementById('nav3').classList.toggle('active', id === 3);
+    document.getElementById('nav4').classList.toggle('active', id === 4);
+    if (id === 2) {
+        setTimeout(() => {
+            if (!map) {
+                map = L.map('map').setView([0,0], 18);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19
+                }).addTo(map);
+                marker = L.marker([0,0]).addTo(map);
+            }
+            map.invalidateSize();
+        }, 100);
+    }
+}
+
+// camera switching code (same as ESP32)
+const SECONDARY_CAM_IP = "172.20.10.5";
+const SECONDARY_CAM_PORT = "81";
+
+function hideLoading() {
+    document.getElementById('cam-loading').classList.remove('active');
+}
+
+function showError() {
+    const loading = document.getElementById('cam-loading');
+    const btn2 = document.getElementById('btn-cam2');
+    if (btn2.classList.contains('active')) {
+        loading.innerHTML = 'Connection Failed';
+    } else {
+        // primary camera error – show connecting animation instead
+        loading.innerHTML = 'Connecting<span class="dots"></span>';
+    }
+    loading.classList.add('active');
+}
+
+function switchCam(id) {
+    const streamImg = document.getElementById('stream-primary');
+    const loading = document.getElementById('cam-loading');
+    const btn1 = document.getElementById('btn-cam1');
+    const btn2 = document.getElementById('btn-cam2');
+
+    // Show loading state immediately
+    loading.classList.add('active');
+    
+    // Update buttons
+    btn1.classList.toggle('active', id === 1);
+    btn2.classList.toggle('active', id === 2);
+
+    // Swap Source with a Cache Buster (?t=...) to force a reconnect
+    const cacheBuster = "?t=" + new Date().getTime();
+    if (id === 1) {
+        streamImg.src = "/stream1" + cacheBuster;
+    } else {
+        streamImg.src = "/stream2" + cacheBuster;
+    }
+}
+
+// Ensure the image hides the loader when it finally connects
+document.getElementById('stream-primary').onload = function() {
+    document.getElementById('cam-loading').classList.remove('active');
+};
+
+window.onload = () => {
+    const cam2 = document.getElementById('stream-secondary');
+    cam2.src = "http://" + SECONDARY_CAM_IP + ":" + SECONDARY_CAM_PORT + "/stream";
+    fetchArchive();
+};
+
+function updateStatus() {
+    fetch('/status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.valid) {
+            document.getElementById('gps-status').innerHTML ='<span class="status-dot status-locked"></span>Locked';
+            const latDir = data.lat >= 0 ? 'N' : 'S';
+            const lonDir = data.lon >= 0 ? 'E' : 'W';
+            document.getElementById('coords').innerText = Math.abs(data.lat).toFixed(6) + ' ' + latDir + ', ' + Math.abs(data.lon).toFixed(6) + ' ' + lonDir;
+            document.getElementById('alt').innerText = data.alt.toFixed(2) + ' m';
+            document.getElementById('sats').innerText = data.satellites || data.sats || 0;
+            const h = String(data.h).padStart(2,'0');
+            const m = String(data.m).padStart(2,'0');
+            const s = String(data.s).padStart(2,'0');
+            document.getElementById('gps-time').innerText = h + ':' + m + ':' + s;
+            if (map && marker && document.getElementById('page4').style.display === 'block') {
+                marker.setLatLng([data.lat, data.lon]);
+                map.panTo([data.lat, data.lon]);
+                // record for field mapping
+                if (fieldTracking) {
+                    fieldCoords.push([data.lat, data.lon]);
+                    if (fieldPolygon) {
+                        fieldPolygon.setLatLngs(fieldCoords);
+                    } else {
+                        fieldPolygon = L.polygon(fieldCoords,{color:'yellow'}).addTo(map);
+                    }
+                }
+            }
+        }
+        else {
+            document.getElementById('gps-status').innerHTML ='Finding<span class="dots"></span>';
+            document.getElementById('coords').innerText ='0.000000 N, 0.000000 W';
+            document.getElementById('gps-time').innerText ='00:00:00';
+            document.getElementById('sats').innerText = data.satellites || data.sats || 0;
+        }
+    })
+.catch(err => console.error('Fetch error:', err));
+}
+setInterval(updateStatus, 1000);
+
+function fetchArchive() {
+    fetch('/api/data')
+    .then(r => r.json())
+    .then(list => {
+        const container = document.getElementById('archive-list');
+        container.innerHTML = '';
+        list.forEach(name => {
+            const div = document.createElement('div');
+            div.className = 'data-card';
+            div.innerText = name;
+            div.onclick = () => alert('clicked '+name);
+            container.appendChild(div);
+        });
+    });
+}
+</script>
+</body>
+</html>
