@@ -205,21 +205,6 @@ h1{ /* title text styling */
     margin-right: 8px;
 }
 
-.status-locked {
-    background: #4caf50;
-}
-
-.status-searching {
-    background: #f44336;
-    animation: blink 1s infinite;
-}
-
-@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-.dots::after {
-    content: '.';
-    animation: dots 1.5s infinite;
-}
-
 @keyframes dots {
     0%,32% {content: '.';}
     33%,65% {content: '..';}
@@ -286,7 +271,7 @@ h1{ /* title text styling */
         <button id="nav1" class="nav-btn active" onclick="showPage(1)">Live</button>
         <button id="nav2" class="nav-btn" onclick="showPage(2)">Map</button>
         <button id="nav3" class="nav-btn" onclick="showPage(3)">Archive</button>
-        <button id="nav4" class="nav-btn" onclick="showPage(4)">Filters</button>
+        <button id="nav4" class="nav-btn" onclick="showPage(4)">Archive Filters</button>
     </div>
 
     <div id="page1">
@@ -349,7 +334,7 @@ h1{ /* title text styling */
         </div>
 </div>
     <div id="page4" style="display:none;">
-    <h2>Plant Filters</h2>
+    <h2>Archive Filters</h2>
 
     <div id="plant-list" class="plant-list">
 
@@ -397,34 +382,101 @@ h1{ /* title text styling */
 </div>
 <script>
 
+    plant.type = "Dandelion" | "Thistle" | "Unknown"
+    plant.action = "spray" | "ignore" | "unknown"
+
     const MOCK_DETECTIONS = [
     {
-        timestamp: "10:12:05",
-        labels: "Cam1: Dandelion",
-        lat: 50.3755,
-        lon: -4.1427,
-        image: "" // empty = no image
+    id: 1,
+    timestamp: "10:12:05",
+    lat: 50.3755,
+    lon: -4.1427,
+
+    plants: [
+        { type: "Dandelion", confidence: 0.92 },
+        { type: "Unknown", confidence: 0.60 }
+    ],
+
+    cam1: {
+        image: "",   // base64 or file path
+        status: "ok"
+    },
+
+    cam2: {
+        image: "",
+        status: "ok"
+    },
+
+    action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-        timestamp: "10:13:42",
-        labels: "Cam2: Thistle",
-        lat: 50.3760,
-        lon: -4.1432,
-        image: ""
+    id: 1,
+    timestamp: "10:12:05",
+    lat: 50.3755,
+    lon: -4.1427,
+
+    plants: [
+        { type: "Dandelion", confidence: 0.92 },
+        { type: "Unknown", confidence: 0.60 }
+    ],
+
+    cam1: {
+        image: "",   // base64 or file path
+        status: "ok"
+    },
+
+    cam2: {
+        image: "",
+        status: "ok"
+    },
+
+    action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-        timestamp: "10:15:10",
-        labels: "Cam1: Clover",
-        lat: 50.3748,
-        lon: -4.1419,
-        image: ""
+    id: 1,
+    timestamp: "10:12:05",
+    lat: 50.3755,
+    lon: -4.1427,
+
+    plants: [
+        { type: "Dandelion", confidence: 0.92 },
+        { type: "Unknown", confidence: 0.60 }
+    ],
+
+    cam1: {
+        image: "",   // base64 or file path
+        status: "ok"
+    },
+
+    cam2: {
+        image: "",
+        status: "ok"
+    },
+
+    action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-        timestamp: "10:16:33",
-        labels: "Cam2: Bindweed",
-        lat: 50.3752,
-        lon: -4.1421,
-        image: ""
+    id: 1,
+    timestamp: "10:12:05",
+    lat: 50.3755,
+    lon: -4.1427,
+
+    plants: [
+        { type: "Dandelion", confidence: 0.92 },
+        { type: "Unknown", confidence: 0.60 }
+    ],
+
+    cam1: {
+        image: "",   // base64 or file path
+        status: "ok"
+    },
+
+    cam2: {
+        image: "",
+        status: "ok"
+    },
+
+    action: "untreated" // later: sprayed / ignored / unknown
     }
 ];
 
@@ -727,16 +779,22 @@ function openArchiveItem(item) {
 
     const container = document.getElementById('detail-content');
 
-    let imgHTML = item.image
-        ? `<img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">`
-        : `<div style="margin-top:10px;color:#666;">No image available</div>`;
-
     container.innerHTML = `
         <p><b>Time:</b> ${item.timestamp}</p>
-        <p><b>Labels:</b> ${item.labels}</p>
-        <p><b>Latitude:</b> ${item.lat}</p>
-        <p><b>Longitude:</b> ${item.lon}</p>
-        ${imgHTML}
+        <p><b>Location:</b> ${item.lat}, ${item.lon}</p>
+
+        <p><b>Detected Plants:</b></p>
+        <ul>
+            ${item.plants.map(p => `<li>${p.type} (${(p.confidence*100).toFixed(1)}%)</li>`).join("")}
+        </ul>
+
+        <p><b>Action:</b> ${item.action}</p>
+
+        <h3>Cam 1</h3>
+        ${item.cam1.image ? `<img src="${item.cam1.image}" style="width:100%;border-radius:10px;">` : "No image"}
+
+        <h3>Cam 2</h3>
+        ${item.cam2.image ? `<img src="${item.cam2.image}" style="width:100%;border-radius:10px;">` : "No image"}
     `;
 }
 
