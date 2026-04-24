@@ -245,8 +245,8 @@ h1{ /* title text styling */
 
         <div class="stream-box">
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
-            <img src="/stream" id="stream-primary" class="active" referrerpolicy="no-referrer" onload="hideLoading()" onerror="showError()">
-            <img src="" id="stream-secondary" alt="Secondary Feed Offline" onload="hideLoading()" onerror="showError()" referrerpolicy="no-referrer">
+            <img src="/stream1" id="stream-primary" class="active" referrerpolicy="no-referrer" onload="hideLoading()" onerror="showError()">
+            <img src="/stream2" id="stream-secondary" alt="Secondary Feed Offline" onload="hideLoading()" onerror="showError()" referrerpolicy="no-referrer">
             <div id="active-label" class="stream-label" style="display:none">Primary Feed</div>
         </div>
         <div class="cam-tabs" style="margin-top:8px;">
@@ -296,10 +296,6 @@ h1{ /* title text styling */
         <h2>Filters</h2>
         <p>Filter settings will go here.</p>
     </div>
-    <div id="page3" style="display:none;">
-        <h2>Filters</h2>
-        <p>Filter settings will go here.</p>
-    </div>
 </div>
 <script>
 var map = null;
@@ -316,22 +312,6 @@ function showLoading(msg = 'Connecting') {
     loading.innerHTML = msg + '<span class="dots"></span>';
     loading.classList.add('active');
 }
-
-function hideLoading() {
-    document.getElementById('cam-loading').classList.remove('active');
-}
-
-function showError() {
-    const loading = document.getElementById('cam-loading');
-    const btn2 = document.getElementById('btn-cam2');
-    if (btn2.classList.contains('active')) {
-        loading.innerHTML = 'Connection Failed';
-    } else {
-        loading.innerHTML = 'Connecting<span class="dots"></span>';
-    }
-    loading.classList.add('active');
-}
-
 function showPage(id) {
     document.getElementById('page1').style.display = id === 1 ? 'block' : 'none';
     document.getElementById('page2').style.display = id === 2 ? 'block' : 'none';
@@ -356,9 +336,17 @@ function showPage(id) {
     }
 }
 
-// camera switching code (same as ESP32)
-const SECONDARY_CAM_IP = "172.20.10.5";
-const SECONDARY_CAM_PORT = "81";
+function toggleField() {
+    fieldTracking = !fieldTracking;
+    if (!fieldTracking) {
+        fieldCoords = [];
+        if (fieldPolygon) {
+            map.removeLayer(fieldPolygon);
+            fieldPolygon = null;
+        }
+    }
+    document.getElementById('fieldBtn').innerText = fieldTracking ? 'Stop & Clear Field Map' : 'Create Field Map';
+}
 
 function hideLoading() {
     document.getElementById('cam-loading').classList.remove('active');
@@ -405,7 +393,6 @@ document.getElementById('stream-primary').onload = function() {
 
 window.onload = () => {
     const cam2 = document.getElementById('stream-secondary');
-    cam2.src = "http://" + SECONDARY_CAM_IP + ":" + SECONDARY_CAM_PORT + "/stream";
     fetchArchive();
 };
 
@@ -418,13 +405,15 @@ function updateStatus() {
             const latDir = data.lat >= 0 ? 'N' : 'S';
             const lonDir = data.lon >= 0 ? 'E' : 'W';
             document.getElementById('coords').innerText = Math.abs(data.lat).toFixed(6) + ' ' + latDir + ', ' + Math.abs(data.lon).toFixed(6) + ' ' + lonDir;
-            document.getElementById('alt').innerText = data.alt.toFixed(2) + ' m';
-            document.getElementById('sats').innerText = data.satellites || data.sats || 0;
-            const h = String(data.h).padStart(2,'0');
-            const m = String(data.m).padStart(2,'0');
-            const s = String(data.s).padStart(2,'0');
-            document.getElementById('gps-time').innerText = h + ':' + m + ':' + s;
-            if (map && marker && document.getElementById('page4').style.display === 'block') {
+
+            document.getElementById('alt').innerText = (data.alt || 0).toFixed(2) + ' m';
+            document.getElementById('sats').innerText = data.sats || 0;
+
+            // fallback time (since backend no longer sends h/m/s)
+            const now = new Date();
+            document.getElementById('gps-time').innerText = now.toUTCString().split(' ')[4];
+
+            if (map && marker && document.getElementById('page2').style.display === 'block') {
                 marker.setLatLng([data.lat, data.lon]);
                 map.panTo([data.lat, data.lon]);
                 // record for field mapping

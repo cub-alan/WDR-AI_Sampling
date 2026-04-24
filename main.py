@@ -49,9 +49,11 @@ WDR_Webserver_URL = f"http://localhost:{PORT}"
 # test URLs 
 Cam1_URL = "http://172.20.10.5:80/stream1"
 Cam2_URL = "http://172.20.10.6:80/stream2"
+GNSS_IP = "http://172.20.10.5:80/gnss"
 
 # Actual URLs
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
+#GNSS_IP = "http://192.168.4.138/gnss"
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
@@ -88,8 +90,8 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 def index():
     return app.send_static_file("website.html")
 
-@app.route("/Archeive", methods=["POST"])
-def Archeive():
+@app.route("/archive", methods=["POST"])
+def archive():
     data = request.json
     filename = f"detection_{data['timestamp'].replace(':','-')}.json"
     with open(os.path.join(DATA_DIR, filename), 'w') as f:
@@ -214,15 +216,16 @@ def generate_stream(cam):
 
 @app.route("/stream1")
 def stream1():
-    with GNSS_Lock: return json.dumps(GNSS_New)
-    return Response(generate_stream("Cam1"),
-        mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_stream("Cam1"),mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route("/stream2")
 def stream2():
-    return Response(generate_stream("Cam2"),
-        mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_stream("Cam2"),mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route("/status")
+def status():
+    with GNSS_Lock:
+        return GNSS_New.copy()
 
 def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
@@ -249,20 +252,6 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
     return SAM_Mask, Bio_model, Bio_processor, Device
 
-def Get_GNSS(): # function to continuously get the latest GNSS data from the stream
-    global GNSS_New
-    while True:
-        try:
-            GNSS_Receive = requests.get(GNSS_URL, timeout=5) # make a GET request to the GNSS data stream with a timeout
-            GNSS_Data = GNSS_Receive.json() # parse the response as JSON
-
-            with GNSS_Lock: # user the gnss mutex to safely retreive the gnss data
-                GNSS_New.update(GNSS_Data) # update the global variable with the new gnss data
-        except Exception as error:
-            print(error) # if there is an error skip and then try again
-            pass
-        time.sleep(1) # add a delay before trying again to avoid overwhelming the server
-            
         
 def Sample_Process(Stream1,Stream2):       
 
@@ -270,7 +259,6 @@ def Sample_Process(Stream1,Stream2):
 
     while True:
         count = count + 1
-        start_time = time.time() # get the current time to manage the frame rate
 
         if count % FRAME_SKIP != 0:
             time.sleep(0.01)
@@ -281,7 +269,7 @@ def Sample_Process(Stream1,Stream2):
 
         TimeStamp = datetime.now().strftime("%H:%M:%S")
 
-        for cam in [stream1, stream2]:
+        for cam in [Stream1, Stream2]:
             ret, frame = cam.Get_Frame()
             if ret:
                 try:
@@ -296,7 +284,21 @@ def Sample_Process(Stream1,Stream2):
 
         time.sleep(0.05)
 
-       
+def Get_GNSS():
+    global GNSS_New
+    while True:
+        try:
+            GNSS_Receive = requests.get(GNSS_IP, timeout=5)
+            GNSS_Data = GNSS_Receive.json()
+
+            with GNSS_Lock:
+                GNSS_New.update(GNSS_Data)
+
+        except Exception as e:
+            print("[GNSS ERROR]", e)
+
+        time.sleep(1)
+
 def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
     results = []
@@ -364,6 +366,10 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
 
         now = time.time()
         if now - last_ai_time < AI_INTERVAL:
+            try:
+                Q_Sample.put_nowait(sample)
+            except Full:
+                pass
             continue
 
         last_ai_time = now
@@ -404,6 +410,28 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
         except:
             pass
 
+detections_store = []
+
+@app.route("/add_detection", methods=["POST"])
+def add_detection():
+    data = request.json
+
+    # store in memory (for live view)
+    detections_store.append(data)
+    if len(detections_store) > 200:
+        detections_store.pop(0)
+
+    # also save to archive
+    filename = f"detection_{data['timestamp'].replace(':','-')}.json"
+    with open(os.path.join(DATA_DIR, filename), 'w') as f:
+        json.dump(data, f)
+
+    return "OK", 200
+
+@app.route("/api/detections")
+def get_detections():
+    return json.dumps(detections_store[-50:])  # last 50
+
 def main():
     zeroconf = register_mdns(PORT)
 
@@ -418,11 +446,11 @@ def main():
     Cam2.Init(Cam2_URL,"Cam2")
 
     #start all threads
-    Thread(target=Get_GNSS, daemon=True).start() # start the thread to continuously get the latest GNSS data
-
     Thread(target=Sample_Process, args=(Cam1, Cam2), daemon=True).start() # start the thread to continuously process the camera samples
-    
-    Thread(target=lambda:app.run(host='0.0.0.0', port=PORT, threaded=True),daemon=True).start()
+
+    Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
+
+    Thread(target=Get_GNSS, daemon=True).start()
 
     for _ in range(2):
         Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
