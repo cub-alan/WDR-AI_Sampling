@@ -22,7 +22,7 @@ import torch # for Bioclip ai model handling
 from PIL import Image
 from threading import Thread, Lock # for handling multiple image processing threads
 from queue import Queue, Empty, Full # for managing the image processing queue
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 
 # imports for website
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -40,6 +40,9 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 #BioCLIP imports
 from transformers import CLIPModel, CLIPProcessor 
 
+MODE = {"type": "LIVE"}
+MODE_LOCK = Lock()
+
 PORT = 8000
 
 HOSTNAME = "wdr.local."  # must end with dot
@@ -50,11 +53,10 @@ WDR_Webserver_URL = f"http://localhost:{PORT}"
 # test URLs 
 Cam1_URL = "http://172.20.10.5:80/stream1"
 Cam2_URL = "http://172.20.10.6:80/stream2"
-GNSS_IP = "http://172.20.10.5:80/gnss"
+GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
 
 # Actual URLs
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
-#GNSS_IP = "http://192.168.4.138/gnss"
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
@@ -68,6 +70,8 @@ AI_INTERVAL = 0.3
 SCALE = 0.5
 MAX_MASKS = 15
 FRAME_SKIP = 2
+
+SD_index = 0
 
 # initialize shared variables
 GNSS_New = {"lat": 0, "lon": 0, "valid": 0 , "sats": 0} # variable to get newest gnss data
@@ -84,6 +88,8 @@ SAM_Check = "sam2.1_hiera_small.pt"
 
 Latest_Frame = {"Cam1":None,"Cam2":None}
 Frame_Lock = Lock()
+
+MODE_LOCK = Lock()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 
@@ -110,6 +116,15 @@ def upload_file():
     with open(path, 'wb') as f:
         f.write(request.data)
     return "OK", 200
+
+@app.route("/toggle_mode", methods=["POST"])
+def toggle_mode():
+    with MODE_LOCK:
+        if MODE["type"] == "LIVE":
+            MODE["type"] = "SD"
+        else:
+            MODE["type"] = "LIVE"
+    return jsonify(MODE)
 
 # a function to be able to set the url name to wdr.local
 def register_mdns(port):
@@ -356,15 +371,66 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
     return results
 
+def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
+    files = sorted(os.listdir(Sample_Folder))
+
+    for file in files:
+        path = os.path.join(Sample_Folder, file)
+
+        if not file.endswith(".jpg"):
+            continue
+
+        frame = cv2.imread(path)
+        if frame is None:
+            continue
+
+        with Targets_Lock:
+            targets = Targets.copy()
+
+        detections = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
+
+        _, buff = cv2.imencode('.jpg', frame)
+
+        payload = {
+            "image": base64.b64encode(buff).decode(),
+            "labels": f"SD: {', '.join([d[0] for d in detections])}",
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "lat": 0,
+            "lon": 0
+        }
+
+        try:
+            requests.post(f"{WDR_Webserver_URL}/add_detection", json=payload)
+        except:
+            pass
+
+        time.sleep(0.2)  # playback speed
+
 def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
     last_ai_time = 0
 
     while True:
+        with MODE_LOCK:
+            mode = MODE["type"]
+        if mode == "SD":
+            process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device)
+            time.sleep(0.1)
+            continue  
         try:
             sample = Q_Sample.get(timeout=1)
         except Empty:
             continue
 
+        now = time.time()
+        if now - last_ai_time < AI_INTERVAL:
+            try:
+                Q_Sample.put_nowait(sample)
+            except Full:
+                pass
+            continue
+
+        last_ai_time = now
+        
         now = time.time()
         if now - last_ai_time < AI_INTERVAL:
             try:
@@ -412,6 +478,9 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             pass
 
 detections_store = []
+@app.route("/get_mode")
+def get_mode():
+    return jsonify(MODE)
 
 @app.route("/add_detection", methods=["POST"])
 def add_detection():
@@ -436,6 +505,8 @@ def get_detections():
 def main():
     zeroconf = register_mdns(PORT)
 
+    Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
+
     SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs() # initialize the SAM2 and BioCLIP models
 
     # set the two cameras to be appart of the camera class
@@ -447,9 +518,8 @@ def main():
     Cam2.Init(Cam2_URL,"Cam2")
 
     #start all threads
-    Thread(target=Sample_Process, args=(Cam1, Cam2), daemon=True).start() # start the thread to continuously process the camera samples
 
-    Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
+    Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
 
     Thread(target=Get_GNSS, daemon=True).start()
 

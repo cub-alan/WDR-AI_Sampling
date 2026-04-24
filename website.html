@@ -226,6 +226,54 @@ h1{ /* title text styling */
     66%,100% {content: '...';}
 }
 
+.plant-list {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.plant-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #000;
+    color: white;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: 1px solid #222;
+    cursor: pointer;
+    user-select: none;
+}
+
+.plant-item span:first-child {
+    flex: 1;
+}
+
+.plant-status {
+    font-size: 12px;
+    color: #888;
+    margin-left: 10px;
+}
+
+.archive-container {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid #222;
+    border-radius: 10px;
+    background: #ffffff;
+}
+.archive-container::-webkit-scrollbar {
+    width: 6px;
+}
+.archive-container::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
 </style>
 </head>
 <body> <!-- anything in body is visible content -->
@@ -246,7 +294,6 @@ h1{ /* title text styling */
         <div class="stream-box">
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
             <img src="/stream1" id="stream-primary" class="active" referrerpolicy="no-referrer" onload="hideLoading()" onerror="showError()">
-            <img src="/stream2" id="stream-secondary" alt="Secondary Feed Offline" onload="hideLoading()" onerror="showError()" referrerpolicy="no-referrer">
             <div id="active-label" class="stream-label" style="display:none">Primary Feed</div>
         </div>
         <div class="cam-tabs" style="margin-top:8px;">
@@ -286,18 +333,101 @@ h1{ /* title text styling */
         <div id="map"></div>
         <button id="fieldBtn" class="cam-btn" style="margin:10px auto 0; display:block; width:50%; border-radius:8px;" onclick="toggleField()">Create Field Map</button>
     </div>
-    <div id="page3" style="display:none;">
+   <div id="page3" style="display:none;">
         <h2>Archive</h2>
-        <div id="archive-list">
-            <!-- timestamp boxes will be injected here -->
+
+        <div id="modeStatus" class="label">Mode: mode</div>
+        <button id="modeBtn" class="cam-btn" onclick="toggleMode()">Switch Mode</button>
+
+        <div id="archive-list" class="archive-container"></div>
+        <div id="page3-detail" style="display:none;">
+            <button class="cam-btn" onclick="backToArchive()">← Back</button>
+
+            <h2>Detection Details</h2>
+
+            <div id="detail-content" style="color:white;"></div>
         </div>
-    </div>
+</div>
     <div id="page4" style="display:none;">
-        <h2>Filters</h2>
-        <p>Filter settings will go here.</p>
+    <h2>Plant Filters</h2>
+
+    <div id="plant-list" class="plant-list">
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Nettle</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Creeping Buttercup</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Bindweed</span>
+            <input type="checkbox" onclick="event.stopPropagation() ">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Dandelion</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Couch Grass</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Japanese Knot Weed</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Bramble</span>
+            <input type="checkbox" onclick="event.stopPropagation() ">
+        </div>
+
+        <div class="plant-item" onclick="togglePlantItem(this)">
+            <span>Cow Parsley</span>
+            <input type="checkbox" onclick="event.stopPropagation()">
+        </div>
+
     </div>
 </div>
+</div>
 <script>
+
+    const MOCK_DETECTIONS = [
+    {
+        timestamp: "10:12:05",
+        labels: "Cam1: Dandelion",
+        lat: 50.3755,
+        lon: -4.1427,
+        image: "" // empty = no image
+    },
+    {
+        timestamp: "10:13:42",
+        labels: "Cam2: Thistle",
+        lat: 50.3760,
+        lon: -4.1432,
+        image: ""
+    },
+    {
+        timestamp: "10:15:10",
+        labels: "Cam1: Clover",
+        lat: 50.3748,
+        lon: -4.1419,
+        image: ""
+    },
+    {
+        timestamp: "10:16:33",
+        labels: "Cam2: Bindweed",
+        lat: 50.3752,
+        lon: -4.1421,
+        image: ""
+    }
+];
+
 var map = null;
 var marker = null;
 
@@ -305,6 +435,47 @@ var marker = null;
 let fieldTracking = false;
 let fieldCoords = [];
 let fieldPolygon = null;
+
+function updateModeUI(mode) {
+    document.getElementById('modeStatus').innerText = "Mode: " + mode;
+}
+
+function toggleMode() {
+    fetch('/toggle_mode', { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        console.log("MODE RESPONSE:", data);
+
+        const btn = document.getElementById('modeBtn');
+        const status = document.getElementById('modeStatus');
+
+        if (data.type === "SD") {
+            btn.innerText = "Switch to Live Mode";
+            status.innerText = "Mode: SD";
+        } else {
+            btn.innerText = "Switch to SD Mode";
+            status.innerText = "Mode: LIVE";
+        }
+    });
+}
+function updateMode() {
+    fetch('/get_mode')
+    .then(res => res.json())
+    .then(data => {
+        const status = document.getElementById('modeStatus');
+        const btn = document.getElementById('modeBtn');
+
+        status.innerText = "Mode: " + data.type;
+
+        if (data.type === "SD") {
+            btn.innerText = "Switch to Live Mode";
+        } else {
+            btn.innerText = "Switch to SD Mode";
+        }
+    });
+}
+
+setInterval(updateMode, 3000);
 
 // util for loader overlay
 function showLoading(msg = 'Connecting') {
@@ -322,6 +493,11 @@ function showPage(id) {
     document.getElementById('nav2').classList.toggle('active', id === 2);
     document.getElementById('nav3').classList.toggle('active', id === 3);
     document.getElementById('nav4').classList.toggle('active', id === 4);
+
+    if (id === 3) {
+        fetchArchive();
+    }
+
     if (id === 2) {
         setTimeout(() => {
             if (!map) {
@@ -333,6 +509,20 @@ function showPage(id) {
             }
             map.invalidateSize();
         }, 100);
+    }
+}
+
+function togglePlantItem(item) {
+    const checkbox = item.querySelector('input[type="checkbox"]');
+
+    // toggle state
+    checkbox.checked = !checkbox.checked;
+
+    // visual update
+    if (checkbox.checked) {
+        item.style.borderColor = "#4caf50";
+    } else {
+        item.style.borderColor = "#222";
     }
 }
 
@@ -396,6 +586,15 @@ window.onload = () => {
     fetchArchive();
 };
 
+function fetchDetections() {
+    fetch('/api/detections')
+    .then(r => r.json())
+    .then(data => {
+        console.log(data); // or display it
+    });
+}
+//setInterval(fetchDetections, 1000);
+
 function updateStatus() {
     fetch('/status')
     .then(response => response.json())
@@ -437,22 +636,118 @@ function updateStatus() {
 .catch(err => console.error('Fetch error:', err));
 }
 setInterval(updateStatus, 1000);
-
+/*
 function fetchArchive() {
-    fetch('/api/data')
+    fetch('/api/detections')
     .then(r => r.json())
     .then(list => {
         const container = document.getElementById('archive-list');
         container.innerHTML = '';
-        list.forEach(name => {
+
+        if (!list || list.length === 0) {
+            container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
+            return;
+        }
+
+        list.forEach((item, index) => {
             const div = document.createElement('div');
-            div.className = 'data-card';
-            div.innerText = name;
-            div.onclick = () => alert('clicked '+name);
+
+            div.style.background = "#111";
+            div.style.padding = "10px";
+            div.style.border = "1px solid #222";
+            div.style.borderRadius = "8px";
+            div.style.color = "white";
+            div.style.cursor = "pointer";
+
+            // "file bar" look
+            div.innerHTML = `
+                <div style="font-size:12px;">
+                     ${item.timestamp} — ${item.labels}
+                </div>
+            `;
+
+            div.onclick = () => openArchiveItem(item);
+
             container.appendChild(div);
         });
     });
 }
+
+function openArchiveItem(item) {
+    document.getElementById('archive-list').style.display = 'none';
+    document.getElementById('page3-detail').style.display = 'block';
+
+    const container = document.getElementById('detail-content');
+
+    container.innerHTML = `
+        <p><b>Time:</b> ${item.timestamp}</p>
+        <p><b>Labels:</b> ${item.labels}</p>
+        <p><b>Latitude:</b> ${item.lat}</p>
+        <p><b>Longitude:</b> ${item.lon}</p>
+        <img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">
+    `;
+}
+*/
+function fetchArchive() {
+    const list = MOCK_DETECTIONS; // ← switch to fake data
+
+    const container = document.getElementById('archive-list');
+    container.innerHTML = '';
+
+    if (!list || list.length === 0) {
+        container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
+        return;
+    }
+
+    list.forEach((item) => {
+        const div = document.createElement('div');
+
+        div.style.background = "#111";
+        div.style.padding = "10px";
+        div.style.border = "1px solid #222";
+        div.style.borderRadius = "8px";
+        div.style.color = "white";
+        div.style.cursor = "pointer";
+
+        div.innerHTML = `
+            <div style="font-size:12px;">
+                🕒 ${item.timestamp} — ${item.labels}
+            </div>
+        `;
+
+        div.onclick = () => openArchiveItem(item);
+
+        container.appendChild(div);
+    });
+}
+
+function openArchiveItem(item) {
+    document.getElementById('archive-list').style.display = 'none';
+    document.getElementById('page3-detail').style.display = 'block';
+
+    const container = document.getElementById('detail-content');
+
+    let imgHTML = item.image
+        ? `<img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">`
+        : `<div style="margin-top:10px;color:#666;">No image available</div>`;
+
+    container.innerHTML = `
+        <p><b>Time:</b> ${item.timestamp}</p>
+        <p><b>Labels:</b> ${item.labels}</p>
+        <p><b>Latitude:</b> ${item.lat}</p>
+        <p><b>Longitude:</b> ${item.lon}</p>
+        ${imgHTML}
+    `;
+}
+
+
+function backToArchive() {
+    document.getElementById('page3-detail').style.display = 'none';
+    document.getElementById('archive-list').style.display = 'block';
+
+    fetchArchive();
+}
+ 
 </script>
 </body>
 </html>
