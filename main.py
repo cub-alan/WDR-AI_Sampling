@@ -46,6 +46,7 @@ HOSTNAME = "wdr.local."  # must end with dot
 
 WDR_Webserver_URL = f"http://localhost:{PORT}"
 
+
 # test URLs 
 Cam1_URL = "http://172.20.10.5:80/stream1"
 Cam2_URL = "http://172.20.10.6:80/stream2"
