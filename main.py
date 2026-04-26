@@ -111,7 +111,7 @@ def toggle_mode():
             MODE["type"] = "LIVE"
             new_mode = "stream"
 
-    # 🔥 SEND COMMAND TO ESP32(s)
+    # 🔥 send to ESP32
     try:
         requests.get(f"{ESP32_1_URL}/mode?mode={new_mode}", timeout=2)
     except Exception as e:
@@ -151,15 +151,6 @@ def upload_file():
     with open(path, 'wb') as f:
         f.write(request.data)
     return "OK", 200
-
-@app.route("/toggle_mode", methods=["POST"])
-def toggle_mode():
-    with MODE_LOCK:
-        if MODE["type"] == "LIVE":
-            MODE["type"] = "SD"
-        else:
-            MODE["type"] = "LIVE"
-    return jsonify(MODE)
 
 # a function to be able to set the url name to wdr.local
 def register_mdns(port):
