@@ -584,31 +584,26 @@ const CAM2_IP = "http://172.20.10.6:80";
 function setSDMode() {
     document.getElementById('stream-primary').src = "";
 
-    Promise.all([
-        fetch(`${CAM1_IP}/mode?mode=sd`),
-        fetch(`${CAM2_IP}/mode?mode=sd`)
-    ])
-    .then(() => {
-        console.log("Switched to SD mode");
-        updateModeUI("SD");
-    })
-    .catch(err => {
-        console.error("Failed to switch mode:", err);
-    });
+    fetch("/set_mode", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({mode: "sd"})
+    }).then(() => updateModeUI("SD"));
 }
 
 function setStreamMode() {
-    Promise.all([
-        fetch(`${CAM1_IP}/mode?mode=stream`),
-        fetch(`${CAM2_IP}/mode?mode=stream`)
-    ])
-    .then(() => {
-        console.log("Switched to STREAM mode");
+    fetch("/set_mode", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({mode: "stream"})
+    }).then(() => {
         updateModeUI("STREAM");
-    })
-    .catch(err => {
-        console.error("Failed to switch mode:", err);
+        switchCam(1);
     });
+
+    setTimeout(() => {
+        switchCam(1);
+    }, 500);
 }
 
 function toggleMode() {

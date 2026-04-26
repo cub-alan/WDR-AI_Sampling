@@ -101,6 +101,21 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 def index():
     return app.send_static_file("website.html")
 
+@app.route("/set_mode", methods=["POST"])
+def set_mode():
+    mode = request.json.get("mode")
+
+    try:
+        requests.get(f"{Cam1_URL.replace('/stream1','')}/mode?mode={mode}", timeout=2)
+        requests.get(f"{Cam2_URL.replace('/stream2','')}/mode?mode={mode}", timeout=2)
+    except Exception as e:
+        print("ESP mode error:", e)
+
+    with MODE_LOCK:
+        MODE["type"] = mode.upper()
+
+    return jsonify({"status": "ok"})
+
 @app.route("/toggle_mode", methods=["POST"])
 def toggle_mode():
     with MODE_LOCK:
