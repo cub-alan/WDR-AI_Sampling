@@ -72,7 +72,7 @@ h1{ /* title text styling */
 
 .cam-tabs {
     display: flex;
-    width: 50%;
+    width: 100%;
     gap: 2px;
     margin-bottom: 4px;
 }
@@ -230,6 +230,13 @@ h1{ /* title text styling */
     user-select: none;
 }
 
+
+.sd-btn.active {
+    background: #151619;
+    color: #fff;
+    border-bottom: 2px solid #079AF0;
+}
+
 .plant-item span:first-child {
     flex: 1;
 }
@@ -271,19 +278,29 @@ h1{ /* title text styling */
         <button id="nav1" class="nav-btn active" onclick="showPage(1)">Live</button>
         <button id="nav2" class="nav-btn" onclick="showPage(2)">Map</button>
         <button id="nav3" class="nav-btn" onclick="showPage(3)">Archive</button>
-        <button id="nav4" class="nav-btn" onclick="showPage(4)">Archive Filters</button>
     </div>
 
     <div id="page1">
 
         <div class="stream-box">
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
-            <img src="/stream1" id="stream-primary" class="active" referrerpolicy="no-referrer" onload="hideLoading()" onerror="showError()">
+
+            <img src="/stream1" id="stream-primary" class="active"
+            referrerpolicy="no-referrer"
+            onload="hideLoading()" onerror="showError()">
+
             <div id="active-label" class="stream-label" style="display:none">Primary Feed</div>
+
         </div>
         <div class="cam-tabs" style="margin-top:8px;">
             <button id="btn-cam1" class="cam-btn active" onclick="switchCam(1)">Cam 1</button>
             <button id="btn-cam2" class="cam-btn" onclick="switchCam(2)">Cam 2</button>
+
+            <!-- spacer -->
+            <div style="flex:1;"></div>
+
+            <button id="btn-sd" class="cam-btn" onclick="toggleMode()">SD</button>
+
         </div>
 
         <!-- MAP and field mapping button removed from Live page -->
@@ -319,26 +336,27 @@ h1{ /* title text styling */
         <button id="fieldBtn" class="cam-btn" style="margin:10px auto 0; display:block; width:50%; border-radius:8px;" onclick="toggleField()">Create Field Map</button>
     </div>
    <div id="page3" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Archive</h2>
 
-        <div id="modeStatus" class="label">Mode: mode</div>
-        <button id="modeBtn" class="cam-btn" onclick="toggleMode()">Switch Mode</button>
-
-        <div id="archive-list" class="archive-container"></div>
-        <div id="page3-detail" style="display:none;">
-            <button class="cam-btn" onclick="backToArchive()">← Back</button>
-
-            <h2>Detection Details</h2>
-
-            <div id="detail-content" style="color:white;"></div>
+        <div style="display:flex; gap:8px;">
+            <button id="filterBtn" class="cam-btn" onclick="toggleFilters()">Filters</button>
         </div>
-</div>
-    <div id="page4" style="display:none;">
-    <h2>Archive Filters</h2>
+    </div>
 
-    <div id="plant-list" class="plant-list">
+    <!-- NORMAL ARCHIVE VIEW -->
+    <div id="archive-view">
+        <div id="archive-list" class="archive-container"></div>
+    </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
+    <!-- FILTER VIEW -->
+    <div id="filter-view" style="display:none;">
+        <button class="cam-btn" onclick="toggleFilters()">← Back</button>
+
+        <h3 style="color:white;">Filters</h3>
+
+        <div id="plant-list" class="plant-list">
+             <div class="plant-item" onclick="togglePlantItem(this)">
             <span>Nettle</span>
             <input type="checkbox" onclick="event.stopPropagation()">
         </div>
@@ -376,14 +394,20 @@ h1{ /* title text styling */
             <span>Cow Parsley</span>
             <input type="checkbox" onclick="event.stopPropagation()">
         </div>
-
     </div>
+    </div>
+    <!-- DETAIL VIEW -->
+    <div id="page3-detail" style="display:none;">
+        <button class="cam-btn" onclick="backToArchive()">← Back</button>
+        <h2>Detection Details</h2>
+        <div id="detail-content" style="color:white;"></div>
+    </div>
+</div>
 </div>
 </div>
 <script>
 
-    plant.type = "Dandelion" | "Thistle" | "Unknown"
-    plant.action = "spray" | "ignore" | "unknown"
+    let selectedPlants = new Set();
 
     const MOCK_DETECTIONS = [
     {
@@ -410,7 +434,7 @@ h1{ /* title text styling */
     action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-    id: 1,
+    id: 2,
     timestamp: "10:12:05",
     lat: 50.3755,
     lon: -4.1427,
@@ -433,7 +457,7 @@ h1{ /* title text styling */
     action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-    id: 1,
+    id: 3,
     timestamp: "10:12:05",
     lat: 50.3755,
     lon: -4.1427,
@@ -456,13 +480,13 @@ h1{ /* title text styling */
     action: "untreated" // later: sprayed / ignored / unknown
     },
     {
-    id: 1,
+    id: 4,
     timestamp: "10:12:05",
     lat: 50.3755,
     lon: -4.1427,
 
     plants: [
-        { type: "Dandelion", confidence: 0.92 },
+        { type: "Nettle", confidence: 0.92 },
         { type: "Unknown", confidence: 0.60 }
     ],
 
@@ -489,45 +513,90 @@ let fieldCoords = [];
 let fieldPolygon = null;
 
 function updateModeUI(mode) {
-    document.getElementById('modeStatus').innerText = "Mode: " + mode;
+    const btn = document.getElementById('btn-sd');
+    const streamBox = document.querySelector('.stream-box');
+
+    const cam1 = document.getElementById('btn-cam1');
+    const cam2 = document.getElementById('btn-cam2');
+
+    let overlay = document.getElementById('sd-overlay');
+
+    // create overlay if not exists
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'sd-overlay';
+        overlay.style.position = 'absolute';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.background = '#000';
+        overlay.style.color = '#fff';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.fontSize = '20px';
+        overlay.style.fontWeight = 'bold';
+        overlay.style.letterSpacing = '2px';
+        overlay.style.zIndex = '10';
+        overlay.style.pointerEvents = 'none';
+        overlay.innerText = 'IN SD MODE';
+
+        streamBox.appendChild(overlay);
+    }
+
+    if (mode === "SD") {
+        btn.classList.add('active');
+        overlay.style.display = 'flex';
+    } else {
+        btn.classList.remove('active');
+        overlay.style.display = 'none';
+    }
+}
+
+function updateMode() {
+    fetch('/get_mode')
+    .then(res => res.json())
+    .then(data => {
+        updateModeUI(data.type);
+    });
 }
 
 function toggleMode() {
     fetch('/toggle_mode', { method: 'POST' })
     .then(res => res.json())
     .then(data => {
-        console.log("MODE RESPONSE:", data);
-
-        const btn = document.getElementById('modeBtn');
-        const status = document.getElementById('modeStatus');
-
-        if (data.type === "SD") {
-            btn.innerText = "Switch to Live Mode";
-            status.innerText = "Mode: SD";
-        } else {
-            btn.innerText = "Switch to SD Mode";
-            status.innerText = "Mode: LIVE";
-        }
+        updateModeUI(data.type);
     });
 }
+
 function updateMode() {
     fetch('/get_mode')
     .then(res => res.json())
     .then(data => {
-        const status = document.getElementById('modeStatus');
-        const btn = document.getElementById('modeBtn');
-
-        status.innerText = "Mode: " + data.type;
-
-        if (data.type === "SD") {
-            btn.innerText = "Switch to Live Mode";
-        } else {
-            btn.innerText = "Switch to SD Mode";
-        }
+        updateModeUI(data.type);
     });
 }
 
 setInterval(updateMode, 3000);
+
+function toggleFilters() {
+    const filterView = document.getElementById('filter-view');
+    const archiveView = document.getElementById('archive-view');
+
+    const isOpen = filterView.style.display === 'block';
+
+    if (isOpen) {
+        // CLOSE
+        filterView.style.display = 'none';
+        archiveView.style.display = 'block';
+        fetchArchive();
+    } else {
+        // OPEN
+        archiveView.style.display = 'none';
+        filterView.style.display = 'block';
+    }
+}
 
 // util for loader overlay
 function showLoading(msg = 'Connecting') {
@@ -539,12 +608,10 @@ function showPage(id) {
     document.getElementById('page1').style.display = id === 1 ? 'block' : 'none';
     document.getElementById('page2').style.display = id === 2 ? 'block' : 'none';
     document.getElementById('page3').style.display = id === 3 ? 'block' : 'none';
-    document.getElementById('page4').style.display = id === 4 ? 'block' : 'none';
     
     document.getElementById('nav1').classList.toggle('active', id === 1);
     document.getElementById('nav2').classList.toggle('active', id === 2);
     document.getElementById('nav3').classList.toggle('active', id === 3);
-    document.getElementById('nav4').classList.toggle('active', id === 4);
 
     if (id === 3) {
         fetchArchive();
@@ -566,16 +633,29 @@ function showPage(id) {
 
 function togglePlantItem(item) {
     const checkbox = item.querySelector('input[type="checkbox"]');
+    const plantName = item.querySelector('span').innerText;
 
-    // toggle state
     checkbox.checked = !checkbox.checked;
 
-    // visual update
     if (checkbox.checked) {
+        selectedPlants.add(plantName);
         item.style.borderColor = "#4caf50";
     } else {
+        selectedPlants.delete(plantName);
         item.style.borderColor = "#222";
     }
+}
+
+function openFilters() {
+    document.getElementById('archive-view').style.display = 'none';
+    document.getElementById('filter-view').style.display = 'block';
+}
+
+function closeFilters() {
+    document.getElementById('filter-view').style.display = 'none';
+    document.getElementById('archive-view').style.display = 'block';
+
+    fetchArchive(); // reapply filters when going back
 }
 
 function toggleField() {
@@ -611,6 +691,9 @@ function switchCam(id) {
     const loading = document.getElementById('cam-loading');
     const btn1 = document.getElementById('btn-cam1');
     const btn2 = document.getElementById('btn-cam2');
+
+    const isSD = document.getElementById('btn-sd').classList.contains('active');
+    if (isSD) return;
 
     // Show loading state immediately
     loading.classList.add('active');
@@ -741,17 +824,23 @@ function openArchiveItem(item) {
 }
 */
 function fetchArchive() {
-    const list = MOCK_DETECTIONS; // ← switch to fake data
+    const list = MOCK_DETECTIONS;
 
     const container = document.getElementById('archive-list');
     container.innerHTML = '';
 
-    if (!list || list.length === 0) {
-        container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
+    let filtered = list;
+
+    if (selectedPlants.size > 0) {
+        filtered = list.filter(item =>item.plants &&item.plants.some(p => selectedPlants.has(p.type)));
+    }
+
+    if (!filtered || filtered.length === 0) {
+        container.innerHTML = "<div style='color:#666;padding:10px;'>No matching detections</div>";
         return;
     }
 
-    list.forEach((item) => {
+    filtered.forEach((item) => {
         const div = document.createElement('div');
 
         div.style.background = "#111";
@@ -763,7 +852,7 @@ function fetchArchive() {
 
         div.innerHTML = `
             <div style="font-size:12px;">
-                🕒 ${item.timestamp} — ${item.labels}
+                🕒 ${item.timestamp} — ${item.plants.map(p => p.type).join(", ")}
             </div>
         `;
 
