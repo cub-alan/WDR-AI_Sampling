@@ -211,6 +211,11 @@ h1{ /* title text styling */
     66%,100% {content: '...';}
 }
 
+.dots::after {
+    content: '.';
+    animation: dots 1.5s infinite steps(1);
+}
+
 .plant-list {
     width: 100%;
     margin-top: 10px;
@@ -308,7 +313,7 @@ h1{ /* title text styling */
             <div class="data-card">
                 <div class="label">GNSS Status</div>
                 <div class="value" id="gps-status">
-                    Finding<span class="dots"></span>
+                    <span id="gps-text">Finding</span><span class="dots"></span>
                 </div>
             </div>
             <div class="data-card">
@@ -570,12 +575,20 @@ function updateMode() {
     });
 }
 
-function toggleMode() {
-    fetch('/toggle_mode', { method: 'POST' })
-    .then(res => res.json())
-    .then(data => {
-        updateModeUI(data.type);
-    });
+//const CAM1_IP = "http://192.168.4.138";
+//const CAM2_IP = "http://192.168.4.108";
+
+const CAM1_IP = "http://172.20.10.5:80";
+const CAM2_IP = "http://172.20.10.6:80";
+
+function setSDMode() {
+    fetch(`${CAM1_IP}/mode?mode=sd`);
+    fetch(`${CAM2_IP}/mode?mode=sd`);
+}
+
+function setStreamMode() {
+    fetch(`${CAM1_IP}/mode?mode=stream`);
+    fetch(`${CAM2_IP}/mode?mode=stream`);
 }
 
 function updateMode() {
