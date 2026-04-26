@@ -290,7 +290,7 @@ h1{ /* title text styling */
         <div class="stream-box">
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
 
-            <img src="/stream1" id="stream-primary" class="active"
+            <img src="${Cam1_URL}/stream1" id="stream-primary" class="active"
             referrerpolicy="no-referrer"
             onload="hideLoading()" onerror="showError()">
 
@@ -411,6 +411,12 @@ h1{ /* title text styling */
 </div>
 </div>
 <script>
+
+    const Cam1_URL = "http://172.20.10.5:80";
+    const Cam2_URL = "http://172.20.10.6:80"; 
+
+    document.getElementById("stream-primary").src = `${Cam1_URL}/stream1`;
+    document.getElementById("stream-secondary").src = `${Cam2_URL}/stream2`;
 
     let selectedPlants = new Set();
 
