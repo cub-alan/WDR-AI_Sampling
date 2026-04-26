@@ -588,11 +588,6 @@ const CAM1_IP = "http://172.20.10.5:80";
 const CAM2_IP = "http://172.20.10.6:80";
 
 function setSDMode() {
-    const img = document.getElementById('stream-primary');
-
-    img.src = "";
-    img.removeAttribute("src");
-
 
     fetch("/set_mode", {
         method: "POST",
@@ -610,10 +605,6 @@ function setStreamMode() {
         updateModeUI("STREAM");
         switchCam(1);
     });
-
-    setTimeout(() => {
-        switchCam(1);
-    }, 500);
 }
 
 function toggleMode() {

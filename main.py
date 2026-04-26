@@ -105,14 +105,14 @@ def index():
 def set_mode():
     mode = request.json.get("mode")
 
-    try:
-        requests.get(f"{Cam1_URL.replace('/stream1','')}/mode?mode={mode}", timeout=2)
-        requests.get(f"{Cam2_URL.replace('/stream2','')}/mode?mode={mode}", timeout=2)
-    except Exception as e:
-        print("ESP mode error:", e)
-
     with MODE_LOCK:
         MODE["type"] = mode.upper()
+
+    try:
+        requests.get(f"{ESP32_1_URL}/mode?mode={mode}", timeout=2)
+        requests.get(f"{ESP32_2_URL}/mode?mode={mode}", timeout=2)
+    except Exception as e:
+        print("ESP mode error:", e)
 
     return jsonify({"status": "ok"})
 
