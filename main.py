@@ -108,9 +108,11 @@ def set_mode():
     with MODE_LOCK:
         MODE["type"] = mode.upper()
 
+    payload = {"mode": mode}
+
     try:
-        requests.get(f"{ESP32_1_URL}/mode?mode={mode}", timeout=2)
-        requests.get(f"{ESP32_2_URL}/mode?mode={mode}", timeout=2)
+        requests.get(f"{ESP32_1_URL}/mode",json=payload ,timeout=2)
+        requests.get(f"{ESP32_2_URL}/mode?",json=payload ,timeout=2)
     except Exception as e:
         print("ESP mode error:", e)
 

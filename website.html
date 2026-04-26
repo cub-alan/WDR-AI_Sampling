@@ -588,12 +588,14 @@ const CAM1_IP = "http://172.20.10.5:80";
 const CAM2_IP = "http://172.20.10.6:80";
 
 function setSDMode() {
-
+    console.log("SD BUTTON CLICKED");
     fetch("/set_mode", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({mode: "sd"})
     }).then(() => updateModeUI("SD"));
+    console.log("MODE RESPONSE:", data);
+    updateModeUI("SD");
 }
 
 function setStreamMode() {
