@@ -51,11 +51,15 @@ WDR_Webserver_URL = f"http://localhost:{PORT}"
 
 
 # test URLs 
+ESP32_1_URL = "http://172.20.10.5:80"
+ESP32_2_URL = "http://172.20.10.6:80"
 Cam1_URL = "http://172.20.10.5:80/stream1"
 Cam2_URL = "http://172.20.10.6:80/stream2"
 GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
 
 # Actual URLs
+#ESP32_1_URL = "192.168.4.138"
+#ESP32_2_URL = "192.168.4.108"
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 
@@ -96,6 +100,37 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 @app.route("/")
 def index():
     return app.send_static_file("website.html")
+
+@app.route("/toggle_mode", methods=["POST"])
+def toggle_mode():
+    with MODE_LOCK:
+        if MODE["type"] == "LIVE":
+            MODE["type"] = "SD"
+            new_mode = "sd"
+        else:
+            MODE["type"] = "LIVE"
+            new_mode = "stream"
+
+    # 🔥 SEND COMMAND TO ESP32(s)
+    try:
+        requests.get(f"{ESP32_1_URL}/mode?mode={new_mode}", timeout=2)
+    except Exception as e:
+        print("[ESP1 ERROR]", e)
+
+    try:
+        requests.get(f"{ESP32_2_URL}/mode?mode={new_mode}", timeout=2)
+    except:
+        pass
+
+    return jsonify(MODE)
+
+@app.route("/sync_mode")
+def sync_mode():
+    try:
+        r = requests.get(f"{ESP32_1_URL}/mode", timeout=2)
+        return r.text
+    except:
+        return "error", 500
 
 @app.route("/archive", methods=["POST"])
 def archive():

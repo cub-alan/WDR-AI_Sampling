@@ -548,9 +548,17 @@ function updateModeUI(mode) {
     if (mode === "SD") {
         btn.classList.add('active');
         overlay.style.display = 'flex';
-    } else {
+        cam1.classList.remove('active');
+        cam2.classList.remove('active');
+        cam1.style.opacity = "0.2";
+        cam2.style.opacity = "0.2";
+
+    } 
+    else {
         btn.classList.remove('active');
         overlay.style.display = 'none';
+        cam1.style.opacity = "1";
+        cam2.style.opacity = "1";
     }
 }
 
@@ -591,7 +599,8 @@ function toggleFilters() {
         filterView.style.display = 'none';
         archiveView.style.display = 'block';
         fetchArchive();
-    } else {
+    } 
+    else {
         // OPEN
         archiveView.style.display = 'none';
         filterView.style.display = 'block';
@@ -640,7 +649,8 @@ function togglePlantItem(item) {
     if (checkbox.checked) {
         selectedPlants.add(plantName);
         item.style.borderColor = "#4caf50";
-    } else {
+    } 
+    else {
         selectedPlants.delete(plantName);
         item.style.borderColor = "#222";
     }
@@ -679,7 +689,8 @@ function showError() {
     const btn2 = document.getElementById('btn-cam2');
     if (btn2.classList.contains('active')) {
         loading.innerHTML = 'Connection Failed';
-    } else {
+    } 
+    else {
         // primary camera error – show connecting animation instead
         loading.innerHTML = 'Connecting<span class="dots"></span>';
     }
@@ -693,7 +704,11 @@ function switchCam(id) {
     const btn2 = document.getElementById('btn-cam2');
 
     const isSD = document.getElementById('btn-sd').classList.contains('active');
-    if (isSD) return;
+    if (isSD) {
+        document.getElementById('btn-cam1').classList.remove('active');
+        document.getElementById('btn-cam2').classList.remove('active');
+        return;
+    }
 
     // Show loading state immediately
     loading.classList.add('active');
@@ -706,7 +721,8 @@ function switchCam(id) {
     const cacheBuster = "?t=" + new Date().getTime();
     if (id === 1) {
         streamImg.src = "/stream1" + cacheBuster;
-    } else {
+    } 
+    else {
         streamImg.src = "/stream2" + cacheBuster;
     }
 }
@@ -755,7 +771,8 @@ function updateStatus() {
                     fieldCoords.push([data.lat, data.lon]);
                     if (fieldPolygon) {
                         fieldPolygon.setLatLngs(fieldCoords);
-                    } else {
+                    }
+                    else {
                         fieldPolygon = L.polygon(fieldCoords,{color:'yellow'}).addTo(map);
                     }
                 }
