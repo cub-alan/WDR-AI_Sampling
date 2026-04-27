@@ -424,7 +424,7 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
     return SAM_Mask, Bio_model, Bio_processor, Device
 
-  def Sample_Process(Stream1, Stream2):
+def Sample_Process(Stream1, Stream2):
     count = 0
 
     while True:
@@ -447,11 +447,14 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
         for cam in [Stream1, Stream2]:
             ret, frame = cam.Get_Frame()
 
+            print(f"[SAMPLE CHECK] {cam.name} ret={ret}")
+
             if ret:
                 # Save sampled camera frame into Sample_Queue folder
                 filename = f"{cam.name}_{TimeStamp}.jpg"
                 save_path = Path(Sample_Folder) / filename
                 cv2.imwrite(str(save_path), frame)
+                print(f"[SAMPLE SAVED] {save_path}")
 
                 # Also keep sending it to the AI queue
                 try:
@@ -467,7 +470,7 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
                     print("[QUEUE FULL] Dropping frame")
 
         time.sleep(0.5)
-        
+
 def Get_GNSS():
     global GNSS_New
     while True:
