@@ -49,7 +49,7 @@ HOSTNAME = "wdr.local."  # must end with dot
 
 WDR_Webserver_URL = f"http://localhost:{PORT}"
 
-
+TEST_FOLDER = "Test_Images"
 # test URLs 
 ESP32_1_URL = "http://172.20.10.5:80"
 ESP32_2_URL = "http://172.20.10.6:80"
@@ -71,8 +71,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # AI setting to change performance / accuracy
 AI_INTERVAL = 0.3
-SCALE = 0.5
-MAX_MASKS = 15
+SCALE = 0.3
+MAX_MASKS = 5
 FRAME_SKIP = 2
 
 SD_index = 0
@@ -194,6 +194,43 @@ def register_mdns(port):
     zeroconf.register_service(service)
     return zeroconf
 
+## create a function for test images
+def Feed_Folder_To_Queue(folder_path, loop=True):
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    files.sort()
+
+    if not files:
+        print("[TEST FEED] No images found in folder")
+        return
+
+    print(f"[TEST FEED] Loaded {len(files)} images")
+
+    while True:
+        for file in files:
+            path = os.path.join(folder_path, file)
+
+            frame = cv2.imread(path)
+            if frame is None:
+                continue
+
+            sample = {
+                "frame": frame,
+                "GNSS": {"lat": 0, "lon": 0, "valid": 1, "sats": 10},
+                "Cam": "Cam1",  # important for your UI
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
+
+            try:
+                Q_Sample.put_nowait(sample)
+                print(f"[QUEUE] {file}")
+            except Full:
+                print("[QUEUE FULL] Dropping frame")
+
+            time.sleep(0.3)  # simulate ~3 FPS
+
+        if not loop:
+            break
+
 class Camera_CLASS: # a class to receive and process streams from both cameras
 
     def Init(self,url,name): #function that initializes the camera stream receiver
@@ -303,6 +340,7 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
     sam2 = build_sam2(config_file=SAM_Config, ckpt_path=str(SAM_Check), device = Device) # build the sam 2 model using the config/checkpoint + use cpu to avoid using cuda 
 
     SAM_Mask = SAM2AutomaticMaskGenerator(sam2) 
+    
 
     Bio_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(Device) # load the BioCLIP model and set to cpu to avoid cuda errors
     Bio_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -363,9 +401,13 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
     results = []
 
     small = cv2.resize(frame, None, fx=SCALE, fy=SCALE)
-    masks = SAM_Mask.generate(small)
+    #masks = SAM_Mask.generate(small)
+    masks = [{"bbox": [0, 0, small.shape[1], small.shape[0]]}]
 
-    masks = sorted(masks, key=lambda m: m["area"], reverse=True)[:MAX_MASKS]
+
+    print("Masks found:", len(masks))
+
+    masks = masks[:MAX_MASKS]
 
     images = []
     boxes = []
@@ -380,7 +422,7 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         w = int(w / SCALE)
         h = int(h / SCALE)
 
-        if w < 40 or h < 40:
+        if w < 20 or h < 20:
             continue
 
         x = max(0, min(x, w_img - 1))
@@ -396,15 +438,26 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         boxes.append((x, y, w, h))
 
     if not images:
-        return []
+        return [],masks
 
-    inputs = Bio_processor(text=Targets, images=images,
-                  return_tensors="pt", padding=True).to(device)
+    try:
+        inputs = Bio_processor(
+        text=Targets,
+        images=images,
+        return_tensors="pt",
+        padding=True
+    ).to(device)
+        print("Images for CLIP:", len(images))
+        with torch.no_grad():
+            outputs = Bio_model(**inputs)
+            probs = outputs.logits_per_image.softmax(dim=1)
 
-    with torch.no_grad():
-        outputs = Bio_model(**inputs)
-        probs = outputs.logits_per_image.softmax(dim=1)
+        print("Probs:", probs.shape)
+    except Exception as e:
+        print("[CLIP ERROR]", e)
+        return [], masks
 
+    
     for i, p in enumerate(probs):
         idx = p.argmax().item()
         conf = p[idx].item()
@@ -412,7 +465,7 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         if conf > 0.6:
             results.append((Targets[idx], conf, boxes[i]))
 
-    return results
+    return results, masks
 
 def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
     files = sorted(os.listdir(Sample_Folder))
@@ -430,7 +483,7 @@ def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
         with Targets_Lock:
             targets = Targets.copy()
 
-        detections = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
+        detections,masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
 
         _, buff = cv2.imencode('.jpg', frame)
 
@@ -448,9 +501,11 @@ def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
             pass
 
         time.sleep(0.2)  # playback speed
-
+"""
 def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
     last_ai_time = 0
+
+    print("[AI] THREAD STARTED")
 
     while True:
         with MODE_LOCK:
@@ -485,26 +540,49 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
         last_ai_time = now
 
         frame = sample["frame"]
+        debug_frame = frame.copy()
         cam = sample["Cam"]
 
         with Targets_Lock:
             targets = Targets.copy()
 
-        detections = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
+        detections,masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
+        #debug_frame = frame.copy()
+        for m in masks:
+            x, y, w, h = [int(v) for v in m["bbox"]]
+
+    # scale back up (since SAM runs on resized image)
+            x = int(x / SCALE)
+            y = int(y / SCALE)
+            w = int(w / SCALE)
+            h = int(h / SCALE)
+
+    # draw light blue boxes for ALL segments
+            cv2.rectangle(debug_frame, (x, y), (x+w, y+h), (255, 200, 0), 1)
 
         labels = []
         for label, conf, (x, y, w, h) in detections:
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
-            cv2.putText(frame, f"{label} {conf:.2f}",
-                        (x, y-10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0,255,0), 2)
+            cv2.rectangle(debug_frame, (x, y), (x+w, y+h), (0,255,0), 2)
+
+            cv2.putText(debug_frame,
+                f"{label} {conf:.2f}",
+                (x, y-10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0,255,0),
+                2)
+            #cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
+            #cv2.putText(frame, f"{label} {conf:.2f}",(x, y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5, (0,255,0), 2)
             labels.append(label)
 
         with Frame_Lock:
-            Latest_Frame[cam] = frame.copy()
+            Latest_Frame[cam] = debug_frame.copy()
 
-        _, buff = cv2.imencode('.jpg', frame)
+        #_, buff = cv2.imencode('.jpg', frame)
+        _, buff = cv2.imencode('.jpg', debug_frame)
+
+        cv2.imshow(f"DEBUG_{cam}", debug_frame)
+        cv2.waitKey(1)
 
         payload = {
             "image": base64.b64encode(buff).decode(),
@@ -518,7 +596,36 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             requests.post(f"{WDR_Webserver_URL}/add_detection",
                           json=payload, timeout=2)
         except:
-            pass
+            pass"""
+
+def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
+    print("[AI] THREAD STARTED")
+
+    last_ai_time = 0
+
+    while True:
+        try:
+            print("[AI] Loop alive")
+
+            sample = Q_Sample.get(timeout=2)
+            print("[AI] Got sample")
+
+            frame = sample["frame"]
+            cam = sample["Cam"]
+
+            with Targets_Lock:
+                targets = Targets.copy()
+
+            print("[AI] Running Frame_Process")
+
+            detections, masks = Frame_Process(
+                frame, SAM_Mask, Bio_model, Bio_processor, Device, targets
+            )
+
+            print(f"[AI] Masks: {len(masks)}, Detections: {len(detections)}")
+
+        except Exception as e:
+            print("[AI ERROR]", e)
 
 detections_store = []
 @app.route("/get_mode")
@@ -557,17 +664,20 @@ def main():
     Cam2 = Camera_CLASS()
 
     # initialize the camera streams with the urls set above
-    Cam1.Init(Cam1_URL,"Cam1")
-    Cam2.Init(Cam2_URL,"Cam2")
+    #Cam1.Init(Cam1_URL,"Cam1")
+    #Cam2.Init(Cam2_URL,"Cam2")
 
     #start all threads
 
-    Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
+    #Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
+
+    Thread(target=Feed_Folder_To_Queue,args=(TEST_FOLDER,), daemon=True).start()
 
     Thread(target=Get_GNSS, daemon=True).start()
 
     for _ in range(2):
         Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
+
 
     try:
         while True:
