@@ -205,6 +205,13 @@ def archive():
 def api_data():
     return json.dumps(os.listdir(DATA_DIR))
 
+@app.route("/debug_frames")
+def debug_frames():
+    with Frame_Lock:
+        return jsonify({
+            "cam1_has_frame": Latest_Frame["Cam1"] is not None,
+            "cam2_has_frame": Latest_Frame["Cam2"] is not None
+        })
 
 @app.route("/api/upload_file", methods=['POST'])
 def upload_file():
@@ -354,18 +361,37 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
                 return False, None # return empty
 
 def generate_stream(cam):
+    blank = np.zeros((480, 640, 3), dtype=np.uint8)
+
     while True:
         with Frame_Lock:
             frame = Latest_Frame.get(cam)
 
         if frame is None:
+            frame = blank.copy()
+            cv2.putText(
+                frame,
+                f"Waiting for {cam}",
+                (120, 240),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2
+            )
+
+        ok, buffer = cv2.imencode(".jpg", frame)
+        if not ok:
             time.sleep(0.05)
             continue
 
-        _, buffer = cv2.imencode('.jpg', frame)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' +
-               buffer.tobytes() + b'\r\n')
+        yield (
+            b"--frame\r\n"
+            b"Content-Type: image/jpeg\r\n\r\n" +
+            buffer.tobytes() +
+            b"\r\n"
+        )
+
+        time.sleep(0.03)
 
 @app.route("/stream1")
 def stream1():
