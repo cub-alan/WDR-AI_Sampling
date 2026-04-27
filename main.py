@@ -153,13 +153,14 @@ def set_mode():
     with MODE_LOCK:
         MODE["type"] = mode.upper()
 
-    payload = {"mode": mode}
+    
 
     try:
-        requests.get(f"{ESP32_1_URL}/mode",json=payload ,timeout=2)
-        requests.get(f"{ESP32_2_URL}/mode?",json=payload ,timeout=2)
+        requests.get(f"{ESP32_1_URL}/mode?mode={mode}", timeout=2)
+        requests.get(f"{ESP32_2_URL}/mode?mode={mode}", timeout=2)
     except Exception as e:
         print("ESP mode error:", e)
+   
 
     return jsonify({"status": "ok"})
 
@@ -204,13 +205,26 @@ def archive():
 def api_data():
     return json.dumps(os.listdir(DATA_DIR))
 
+
 @app.route("/api/upload_file", methods=['POST'])
 def upload_file():
-    name = request.headers.get('File-Name', f"upload_{int(time.time())}.jpg")
-    path = os.path.join(Sample_Folder, name)
-    with open(path, 'wb') as f:
+    filename = request.headers.get("File-Name", "unknown.jpg")
+    camera_id = request.headers.get("Camera-ID", "unknown")
+
+    filename = filename.replace("/", "_").replace("\\", "_")
+
+    save_path = Sample_Folder / filename
+
+    with open(save_path, "wb") as f:
         f.write(request.data)
-    return "OK", 200
+
+    print(f"[UPLOAD] {camera_id}: {filename}")
+
+    return jsonify({
+        "status": "ok",
+        "camera": camera_id,
+        "filename": filename
+    })
 
 # a function to be able to set the url name to wdr.local
 def register_mdns(port):
@@ -398,6 +412,12 @@ def Sample_Process(Stream1,Stream2):
     count = 0 
 
     while True:
+
+        with MODE_LOCK:
+            if MODE["type"] == "SD":
+                time.sleep(0.2)
+                continue    
+
         count = count + 1
 
         if count % FRAME_SKIP != 0:
@@ -567,107 +587,18 @@ def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
             pass
 
         time.sleep(0.2)  # playback speed
-"""
-def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
-    last_ai_time = 0
 
+def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
     print("[AI] THREAD STARTED")
 
     while True:
         with MODE_LOCK:
             mode = MODE["type"]
-        if mode == "SD":
+
+        if torch.modeh.mode == "SD":
             process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device)
-            time.sleep(0.1)
-            continue  
-        try:
-            sample = Q_Sample.get(timeout=1)
-        except Empty:
+            time.sleep(0.5)
             continue
-
-        now = time.time()
-        if now - last_ai_time < AI_INTERVAL:
-            try:
-                Q_Sample.put_nowait(sample)
-            except Full:
-                pass
-            continue
-
-        last_ai_time = now
-        
-        now = time.time()
-        if now - last_ai_time < AI_INTERVAL:
-            try:
-                Q_Sample.put_nowait(sample)
-            except Full:
-                pass
-            continue
-
-        last_ai_time = now
-
-        frame = sample["frame"]
-        debug_frame = frame.copy()
-        cam = sample["Cam"]
-
-        with Targets_Lock:
-            targets = Targets.copy()
-
-        detections,masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
-        #debug_frame = frame.copy()
-        for m in masks:
-            x, y, w, h = [int(v) for v in m["bbox"]]
-
-    # scale back up (since SAM runs on resized image)
-            x = int(x / SCALE)
-            y = int(y / SCALE)
-            w = int(w / SCALE)
-            h = int(h / SCALE)
-
-    # draw light blue boxes for ALL segments
-            cv2.rectangle(debug_frame, (x, y), (x+w, y+h), (255, 200, 0), 1)
-
-        labels = []
-        for label, conf, (x, y, w, h) in detections:
-            cv2.rectangle(debug_frame, (x, y), (x+w, y+h), (0,255,0), 2)
-
-            cv2.putText(debug_frame,
-                f"{label} {conf:.2f}",
-                (x, y-10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0,255,0),
-                2)
-            #cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 2)
-            #cv2.putText(frame, f"{label} {conf:.2f}",(x, y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5, (0,255,0), 2)
-            labels.append(label)
-
-        with Frame_Lock:
-            Latest_Frame[cam] = debug_frame.copy()
-
-        #_, buff = cv2.imencode('.jpg', frame)
-        _, buff = cv2.imencode('.jpg', debug_frame)
-
-        cv2.imshow(f"DEBUG_{cam}", debug_frame)
-        cv2.waitKey(1)
-
-        payload = {
-            "image": base64.b64encode(buff).decode(),
-            "labels": f"{cam}: {', '.join(labels) if labels else 'None'}",
-            "timestamp": sample["timestamp"],
-            "lat": sample["GNSS"].get("lat",0),
-            "lon": sample["GNSS"].get("lon",0)
-        }
-
-        try:
-            requests.post(f"{WDR_Webserver_URL}/add_detection",
-                          json=payload, timeout=2)
-        except:
-            pass"""
-
-def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
-    print("[AI] THREAD STARTED")
-
-    while True:
         try:
             print("[AI] Loop alive")
 
@@ -781,17 +712,14 @@ def main():
     Cam2 = Camera_CLASS()
 
     # initialize the camera streams with the urls set above
-    #Cam1.Init(Cam1_URL,"Cam1")
-    #Cam2.Init(Cam2_URL,"Cam2")
+    Cam1.Init(Cam1_URL,"Cam1")
+    Cam2.Init(Cam2_URL,"Cam2")
 
     #start all threads
 
-    #Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
+    Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
 
-    Thread(target=Feed_Folder_To_Queue,args=(TEST_FOLDER,), daemon=True).start()
-
-    Thread(target=Get_GNSS, daemon=True).start()
-
+    #Thread(target=Feed_Folder_To_Queue,args=(TEST_FOLDER,), daemon=True).start()
 
     Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
 

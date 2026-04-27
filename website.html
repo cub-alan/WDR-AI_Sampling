@@ -293,7 +293,7 @@ h1{ /* title text styling */
         <div class="stream-box">
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
 
-            <img src="${Cam1_URL}/stream1" id="stream-primary" class="active"
+            <img src="/stream1" id="stream-primary" class="active"
             referrerpolicy="no-referrer"
             onload="hideLoading()" onerror="showError()">
 
@@ -540,6 +540,7 @@ h1{ /* title text styling */
 
 var map = null;
 var marker = null;
+var weedMarkers = [];
 
 // field mapping state
 let fieldTracking = false;
@@ -699,17 +700,26 @@ function showPage(id) {
     }
 
     if (id === 2) {
-        setTimeout(() => {
-            if (!map) {
-                map = L.map('map').setView([0,0], 18);
-                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19
-                }).addTo(map);
-                marker = L.marker([0,0]).addTo(map);
-            }
-            map.invalidateSize();
-        }, 100);
-    }
+    setTimeout(() => {
+        if (!map) {
+            map = L.map('map').setView([0,0], 18);
+
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // robot / live GPS marker
+            marker = L.marker([0,0]).addTo(map);
+            marker.bindPopup("Robot current position");
+        }
+
+        map.invalidateSize();
+
+        // load weed detection pins
+        updateWeedPins();
+
+    }, 100);
+}
 }
 
 function togglePlantItem(item) {
@@ -769,7 +779,6 @@ function showError() {
     }
     loading.classList.add('active');
 }
-
 function switchCam(id) {
     const streamImg = document.getElementById('stream-primary');
     const loading = document.getElementById('cam-loading');
@@ -777,25 +786,23 @@ function switchCam(id) {
     const btn2 = document.getElementById('btn-cam2');
 
     const isSD = document.getElementById('btn-sd').classList.contains('active');
+
     if (isSD) {
-        document.getElementById('btn-cam1').classList.remove('active');
-        document.getElementById('btn-cam2').classList.remove('active');
+        btn1.classList.remove('active');
+        btn2.classList.remove('active');
         return;
     }
 
-    // Show loading state immediately
     loading.classList.add('active');
-    
-    // Update buttons
+
     btn1.classList.toggle('active', id === 1);
     btn2.classList.toggle('active', id === 2);
 
-    // Swap Source with a Cache Buster (?t=...) to force a reconnect
     const cacheBuster = "?t=" + new Date().getTime();
+
     if (id === 1) {
         streamImg.src = "/stream1" + cacheBuster;
-    } 
-    else {
+    } else {
         streamImg.src = "/stream2" + cacheBuster;
     }
 }
@@ -860,58 +867,8 @@ function updateStatus() {
 .catch(err => console.error('Fetch error:', err));
 }
 setInterval(updateStatus, 1000);
-/*
-function fetchArchive() {
-    fetch('/api/detections')
-    .then(r => r.json())
-    .then(list => {
-        const container = document.getElementById('archive-list');
-        container.innerHTML = '';
 
-        if (!list || list.length === 0) {
-            container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
-            return;
-        }
-
-        list.forEach((item, index) => {
-            const div = document.createElement('div');
-
-            div.style.background = "#111";
-            div.style.padding = "10px";
-            div.style.border = "1px solid #222";
-            div.style.borderRadius = "8px";
-            div.style.color = "white";
-            div.style.cursor = "pointer";
-
-            // "file bar" look
-            div.innerHTML = `
-                <div style="font-size:12px;">
-                     ${item.timestamp} — ${item.labels}
-                </div>
-            `;
-
-            div.onclick = () => openArchiveItem(item);
-
-            container.appendChild(div);
-        });
-    });
-}
-
-function openArchiveItem(item) {
-    document.getElementById('archive-list').style.display = 'none';
-    document.getElementById('page3-detail').style.display = 'block';
-
-    const container = document.getElementById('detail-content');
-
-    container.innerHTML = `
-        <p><b>Time:</b> ${item.timestamp}</p>
-        <p><b>Labels:</b> ${item.labels}</p>
-        <p><b>Latitude:</b> ${item.lat}</p>
-        <p><b>Longitude:</b> ${item.lon}</p>
-        <img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">
-    `;
-}
-*/function getPlantsFromItem(item) {
+function getPlantsFromItem(item) {
     if (Array.isArray(item.plants)) {
         return item.plants;
     }
@@ -924,6 +881,54 @@ function openArchiveItem(item) {
     }
 
     return [];
+}
+
+function updateWeedPins() {
+    if (!map) return;
+
+    fetch('/api/detections')
+    .then(r => r.json())
+    .then(list => {
+        // remove old weed pins
+        weedMarkers.forEach(m => map.removeLayer(m));
+        weedMarkers = [];
+
+        if (!Array.isArray(list)) return;
+
+        list.forEach(item => {
+            const lat = Number(item.lat);
+            const lon = Number(item.lon);
+
+            // ignore invalid GPS points
+            if (!lat || !lon || lat === 0 || lon === 0) return;
+
+            const plants = getPlantsFromItem(item);
+
+            const plantText = plants.length > 0
+                ? plants.map(p => {
+                    const conf = p.confidence != null
+                        ? ` (${(p.confidence * 100).toFixed(1)}%)`
+                        : "";
+                    return `${p.type}${conf}`;
+                }).join("<br>")
+                : "Unknown weed";
+
+            const popup = `
+                <b>Weed detected</b><br>
+                <b>Time:</b> ${item.timestamp || "N/A"}<br>
+                <b>Camera:</b> ${item.cam || "N/A"}<br>
+                <b>Plants:</b><br>${plantText}<br>
+                <b>Lat:</b> ${lat.toFixed(6)}<br>
+                <b>Lon:</b> ${lon.toFixed(6)}
+            `;
+
+            const weedMarker = L.marker([lat, lon]).addTo(map);
+            weedMarker.bindPopup(popup);
+
+            weedMarkers.push(weedMarker);
+        });
+    })
+    .catch(err => console.error("Weed pin fetch error:", err));
 }
 
 function fetchArchive() {
@@ -1063,6 +1068,12 @@ function backToArchive() {
     document.getElementById('page3-detail').style.display = 'none';
     document.getElementById('archive-view').style.display = 'block';
 }
+
+setInterval(() => {
+    if (map && document.getElementById('page2').style.display === 'block') {
+        updateWeedPins();
+    }
+}, 3000);
 
 </script>
 </body>
