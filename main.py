@@ -424,44 +424,50 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
     return SAM_Mask, Bio_model, Bio_processor, Device
 
-        
-def Sample_Process(Stream1,Stream2):       
-
-    count = 0 
+  def Sample_Process(Stream1, Stream2):
+    count = 0
 
     while True:
-
         with MODE_LOCK:
             if MODE["type"] == "SD":
                 time.sleep(0.2)
-                continue    
+                continue
 
-        count = count + 1
+        count += 1
 
         if count % FRAME_SKIP != 0:
             time.sleep(0.01)
             continue
 
         with GNSS_Lock:
-            Current_GNSS = GNSS_New.copy() # copy the latest GNSS data safely using the mutex lock
+            Current_GNSS = GNSS_New.copy()
 
-        TimeStamp = datetime.now().strftime("%H:%M:%S")
+        TimeStamp = datetime.now().strftime("%H-%M-%S-%f")
 
         for cam in [Stream1, Stream2]:
             ret, frame = cam.Get_Frame()
+
             if ret:
+                # Save sampled camera frame into Sample_Queue folder
+                filename = f"{cam.name}_{TimeStamp}.jpg"
+                save_path = Path(Sample_Folder) / filename
+                cv2.imwrite(str(save_path), frame)
+
+                # Also keep sending it to the AI queue
                 try:
                     Q_Sample.put_nowait({
                         "frame": frame,
                         "GNSS": Current_GNSS,
                         "Cam": cam.name,
-                        "timestamp": TimeStamp
+                        "timestamp": datetime.now().strftime("%H:%M:%S"),
+                        "file": filename
                     })
+                    print(f"[SAMPLE SAVED] {filename}")
                 except Full:
-                    pass
+                    print("[QUEUE FULL] Dropping frame")
 
-        time.sleep(0.05)
-
+        time.sleep(0.5)
+        
 def Get_GNSS():
     global GNSS_New
     while True:
