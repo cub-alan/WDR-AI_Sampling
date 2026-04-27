@@ -47,7 +47,7 @@ PORT = 8000
 
 HOSTNAME = "wdr.local."  # must end with dot
 
-WDR_Webserver_URL = f"http://localhost:{PORT}"
+WDR_Webserver_URL = f"http://127.0.0.1:{PORT}"
 
 TEST_FOLDER = "Test_Images"
 # test URLs 
@@ -195,7 +195,7 @@ def sync_mode():
 @app.route("/archive", methods=["POST"])
 def archive():
     data = request.json
-    filename = f"detection_{data['timestamp'].replace(':','-')}.json"
+    filename = f"detection_{datetime.now().strftime('%H-%M-%S-%f')}.json"
     with open(os.path.join(DATA_DIR, filename), 'w') as f:
         json.dump(data, f)
     return "OK", 200
@@ -693,21 +693,31 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             # -----------------------------
             _, buff = cv2.imencode('.jpg', frame)
 
-            labels = [d[0] for d in detections]
-
             payload = {
-                "image": base64.b64encode(buff).decode(),
-                "labels": f"{cam}: {', '.join(labels) if labels else 'None'}",
-                "timestamp": sample["timestamp"],
-                "lat": sample["GNSS"].get("lat", 0),
-                "lon": sample["GNSS"].get("lon", 0)
+            "image": base64.b64encode(buff).decode(),
+            "plants": [
+            {
+            "type": label,
+            "confidence": float(conf),
+            "bbox": [int(v) for v in box]
+            }
+            for (label, conf, box) in detections
+            ],
+            "timestamp": sample["timestamp"],
+            "lat": sample["GNSS"].get("lat", 0),
+            "lon": sample["GNSS"].get("lon", 0),
+            "cam": cam
             }
 
             try:
-                requests.post(f"{WDR_Webserver_URL}/add_detection",
-                              json=payload, timeout=2)
-            except:
-                pass
+                r = requests.post(
+                f"{WDR_Webserver_URL}/add_detection",
+                json=payload,
+                timeout=2
+                )
+                print("[ARCHIVE POST]", r.status_code, r.text)
+            except Exception as e:
+                print("[ARCHIVE POST ERROR]", e)
 
         except Exception as e:
             print("[AI ERROR]", e)
@@ -721,22 +731,43 @@ def get_mode():
 def add_detection():
     data = request.json
 
-    # store in memory (for live view)
     detections_store.append(data)
     if len(detections_store) > 200:
         detections_store.pop(0)
 
-    # also save to archive
-    filename = f"detection_{data['timestamp'].replace(':','-')}.json"
-    with open(os.path.join(DATA_DIR, filename), 'w') as f:
-        json.dump(data, f)
+    filename = f"detection_{datetime.now().strftime('%H-%M-%S-%f')}.json"
+    path = os.path.join(DATA_DIR, filename)
+
+    tmp_path = path + ".tmp"
+
+    # write safely first
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+    # then replace
+    os.replace(tmp_path, path)
 
     return "OK", 200
 
 @app.route("/api/detections")
 def get_detections():
-    return json.dumps(detections_store[-50:])  # last 50
+    files = sorted(
+        [f for f in os.listdir(DATA_DIR) if f.endswith(".json")]
+    )
 
+    print("[API DETECTIONS] files found:", len(files))
+
+    detections = []
+
+    for file in files[-50:]:
+        path = os.path.join(DATA_DIR, file)
+        try:
+            with open(path, "r") as f:
+                detections.append(json.load(f))
+        except Exception as e:
+            print("[READ ERROR]", file, e)
+
+    return jsonify(detections)
 def main():
     zeroconf = register_mdns(PORT)
 
@@ -761,8 +792,8 @@ def main():
 
     Thread(target=Get_GNSS, daemon=True).start()
 
-    for _ in range(2):
-        Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
+
+    Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
 
 
     try:

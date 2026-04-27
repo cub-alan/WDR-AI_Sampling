@@ -261,18 +261,21 @@ h1{ /* title text styling */
     padding: 10px;
     border: 1px solid #222;
     border-radius: 10px;
-    background: #ffffff;
+    background: #fff;
 }
 .archive-container::-webkit-scrollbar {
     width: 6px;
 }
 .archive-container::-webkit-scrollbar-thumb {
-    background: #444;
+    background: #000000;
     border-radius: 3px;
 }
-
 </style>
 </head>
+
+
+
+
 <body> <!-- anything in body is visible content -->
 <div class="container">
     <div class="header">
@@ -341,6 +344,7 @@ h1{ /* title text styling */
         <button id="fieldBtn" class="cam-btn" style="margin:10px auto 0; display:block; width:50%; border-radius:8px;" onclick="toggleField()">Create Field Map</button>
     </div>
    <div id="page3" style="display:none;">
+
     <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Archive</h2>
 
@@ -361,64 +365,83 @@ h1{ /* title text styling */
         <h3 style="color:white;">Filters</h3>
 
         <div id="plant-list" class="plant-list">
-             <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Nettle</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
-        </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Creeping Buttercup</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
-        </div>
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Nettles</span>
+                <input type="checkbox" readonly>
+            </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Bindweed</span>
-            <input type="checkbox" onclick="event.stopPropagation() ">
-        </div>
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Creeping buttercup</span>
+                <input type="checkbox" readonly>
+            </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Dandelion</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
-        </div>
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Couch Grass</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
-        </div>
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Bindweed</span>
+                <input type="checkbox" readonly>
+            </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Japanese Knot Weed</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
-        </div>
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Dandelion</span>
+                <input type="checkbox" readonly>
+            </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Bramble</span>
-            <input type="checkbox" onclick="event.stopPropagation() ">
-        </div>
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Couch grass</span>
+                <input type="checkbox" readonly>
+            </div>
 
-        <div class="plant-item" onclick="togglePlantItem(this)">
-            <span>Cow Parsley</span>
-            <input type="checkbox" onclick="event.stopPropagation()">
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Japanese knotweed</span>
+                <input type="checkbox" readonly>
+            </div>
+
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Bramble</span>
+                <input type="checkbox" readonly>
+            </div>
+
+            <div class="plant-item" onclick="togglePlantItem(this)">
+                <span>Cow Parsley</span>
+                <input type="checkbox" readonly>
+            </div>
+
         </div>
     </div>
-    </div>
-    <!-- DETAIL VIEW -->
+
+    <!-- DETAIL VIEW (MUST BE OUTSIDE FILTER VIEW) -->
     <div id="page3-detail" style="display:none;">
         <button class="cam-btn" onclick="backToArchive()">← Back</button>
         <h2>Detection Details</h2>
-        <div id="detail-content" style="color:white;"></div>
+        <div id="detail-content" style="color:rgb(0, 0, 0);"></div>
     </div>
+
 </div>
-</div>
-</div>
+
+
+
+
 <script>
 
     const Cam1_URL = "http://172.20.10.5:80";
     const Cam2_URL = "http://172.20.10.6:80"; 
 
-    document.getElementById("stream-primary").src = `${Cam1_URL}/stream1`;
-    document.getElementById("stream-secondary").src = `${Cam2_URL}/stream2`;
+    document.getElementById("stream-primary").src = "/stream1";
 
     let selectedPlants = new Set();
+
+    const REMOVAL_METHODS = {
+        "Nettles": "Hoe, fork young or established plants, deadhead, smother or strimming ",
+        "Creeping thistle": "Cut repeatedly or apply herbicide to prevent spread.",
+        "Bindweed": "Smother plants to remove light. Fork out seedlings as soon as possible and remove all of the root. Insert a physical barrier. ",
+        "Dandelion": "Fork out young seedling as soon as possible, or smother plants ",
+        "Couch grass": "Avoid disturbing soil. Fork out early seedlings as soon as seen.",
+        "Japanese knotweed": "Do NOT cut freely — requires controlled herbicide treatment.",
+        "Docks": "Deadhead, hoe seedlings, fork plants, smoother seedlings or plants. ",
+        "Cleavers": "Can be removed in one go, or remove seedlings as soon as they form. Can hoe out or smother plants. ",
+        "Creeping buttercup": "Deadhead plants, hoe seedlings, fork out plants or smother ",
+        "Oxalises": "Dead head, hooe or fork out plants, rake or smother. ",
+    };
 
     const MOCK_DETECTIONS = [
     {
@@ -589,13 +612,18 @@ const CAM2_IP = "http://172.20.10.6:80";
 
 function setSDMode() {
     console.log("SD BUTTON CLICKED");
+
     fetch("/set_mode", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({mode: "sd"})
-    }).then(() => updateModeUI("SD"));
-    console.log("MODE RESPONSE:", data);
-    updateModeUI("SD");
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log("MODE RESPONSE:", data);
+        updateModeUI("SD");
+    })
+    .catch(err => console.error("Mode error:", err));
 }
 
 function setStreamMode() {
@@ -658,12 +686,15 @@ function showPage(id) {
     document.getElementById('page1').style.display = id === 1 ? 'block' : 'none';
     document.getElementById('page2').style.display = id === 2 ? 'block' : 'none';
     document.getElementById('page3').style.display = id === 3 ? 'block' : 'none';
-    
+
     document.getElementById('nav1').classList.toggle('active', id === 1);
     document.getElementById('nav2').classList.toggle('active', id === 2);
     document.getElementById('nav3').classList.toggle('active', id === 3);
 
     if (id === 3) {
+        document.getElementById('archive-view').style.display = 'block';
+        document.getElementById('filter-view').style.display = 'none';
+        document.getElementById('page3-detail').style.display = 'none';
         fetchArchive();
     }
 
@@ -690,11 +721,12 @@ function togglePlantItem(item) {
     if (checkbox.checked) {
         selectedPlants.add(plantName);
         item.style.borderColor = "#4caf50";
-    } 
-    else {
+    } else {
         selectedPlants.delete(plantName);
         item.style.borderColor = "#222";
     }
+
+    console.log("Selected filters:", Array.from(selectedPlants));
 }
 
 function openFilters() {
@@ -774,7 +806,6 @@ document.getElementById('stream-primary').onload = function() {
 };
 
 window.onload = () => {
-    const cam2 = document.getElementById('stream-secondary');
     fetchArchive();
 };
 
@@ -880,39 +911,81 @@ function openArchiveItem(item) {
         <img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">
     `;
 }
-*/
+*/function getPlantsFromItem(item) {
+    if (Array.isArray(item.plants)) {
+        return item.plants;
+    }
+
+    if (typeof item.labels === "string") {
+        return item.labels.split(",").map(label => ({
+            type: label.replace(/.*:/, "").trim(),
+            confidence: null
+        }));
+    }
+
+    return [];
+}
+
 function fetchArchive() {
+    console.log("fetchArchive() running");
+
     fetch('/api/detections')
     .then(r => r.json())
     .then(list => {
+        console.log("Archive data received:", list);
+
         const container = document.getElementById('archive-list');
         container.innerHTML = '';
 
-        if (!list || list.length === 0) {
+        if (!Array.isArray(list) || list.length === 0) {
             container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
             return;
         }
 
-        list.forEach((item) => {
+        let shownCount = 0;
+
+        list.forEach(item => {
+            const plants = getPlantsFromItem(item);
+
+            if (selectedPlants.size > 0) {
+                const match = plants.some(p => selectedPlants.has(p.type));
+                if (!match) return;
+            }
+
             const div = document.createElement('div');
 
             div.style.background = "#111";
             div.style.padding = "10px";
             div.style.border = "1px solid #222";
             div.style.borderRadius = "8px";
-            div.style.color = "white";
+            div.style.color = "#fff";
             div.style.cursor = "pointer";
 
             div.innerHTML = `
-                <div style="font-size:12px;">
-                    ${item.timestamp} — ${item.labels}
+                <div>
+                    ${item.timestamp || "Unknown time"} —
+                    ${plants.length > 0 ? plants.map(p => p.type).join(", ") : "None"}
                 </div>
             `;
 
-            div.onclick = () => openArchiveItem(item);
+            div.onclick = () => openArchiveItem({
+                ...item,
+                plants: plants
+            });
 
             container.appendChild(div);
+            shownCount++;
         });
+
+        if (shownCount === 0) {
+            container.innerHTML = "<div style='color:#666;padding:10px;'>No matching detections</div>";
+        }
+    })
+    .catch(err => {
+        console.error("Archive fetch error:", err);
+
+        const container = document.getElementById('archive-list');
+        container.innerHTML = "<div style='color:red;padding:10px;'>Archive fetch failed</div>";
     });
 }
 
@@ -922,12 +995,67 @@ function openArchiveItem(item) {
 
     const container = document.getElementById('detail-content');
 
+    console.log("OPEN ITEM:", item);
+
+    let plants = [];
+
+    // SAFE NORMALISATION
+    if (Array.isArray(item.plants)) {
+        plants = item.plants;
+    } 
+    else if (typeof item.labels === "string") {
+        plants = item.labels.split(",").map(label => ({
+            type: label.replace(/.*:/, "").trim(), // removes "Cam1:"
+            confidence: null
+        }));
+    }
+
     container.innerHTML = `
-        <p><b>Time:</b> ${item.timestamp}</p>
-        <p><b>Labels:</b> ${item.labels}</p>
-        <p><b>Latitude:</b> ${item.lat}</p>
-        <p><b>Longitude:</b> ${item.lon}</p>
-        <img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">
+        <div class="data-card">
+            <div class="label">Timestamp</div>
+            <div class="value">${item.timestamp || "N/A"}</div>
+        </div>
+
+        <div class="data-card">
+            <div class="label">Detected Plants</div>
+            <div class="value">
+                ${
+                    plants.length === 0
+                    ? "None detected"
+                    : plants.map(p => {
+                        const type = p?.type || "Unknown";
+                        const conf = p?.confidence;
+
+                        return `
+                        <div style="margin-bottom:6px;">
+                            <b>${type}</b> — 
+                            ${conf ? (conf * 100).toFixed(1) + "%" : "N/A"}
+                            <br>
+                            <span style="color:#888;font-size:12px;">
+                                ${REMOVAL_METHODS[type] || "No removal method available"}
+                            </span>
+                        </div>`;
+                    }).join("")
+                }
+            </div>
+        </div>
+
+        <div class="data-card">
+            <div class="label">GNSS Data</div>
+            <div class="value">
+                Lat: ${item.lat ?? "?"}, Lon: ${item.lon ?? "?"}
+            </div>
+        </div>
+
+        <div class="data-card">
+            <div class="label">Image</div>
+            ${
+                item.image
+                ? `<img src="data:image/jpeg;base64,${item.image}" 
+                       style="width:100%; border-radius:10px; margin-top:8px;">`
+                : `<div style="color:#666;">No image available</div>`
+            }
+        </div>
     `;
 }
 
@@ -935,7 +1063,7 @@ function backToArchive() {
     document.getElementById('page3-detail').style.display = 'none';
     document.getElementById('archive-view').style.display = 'block';
 }
- 
+
 </script>
 </body>
 </html>
