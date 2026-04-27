@@ -882,75 +882,58 @@ function openArchiveItem(item) {
 }
 */
 function fetchArchive() {
-    const list = MOCK_DETECTIONS;
+    fetch('/api/detections')
+    .then(r => r.json())
+    .then(list => {
+        const container = document.getElementById('archive-list');
+        container.innerHTML = '';
 
-    const container = document.getElementById('archive-list');
-    container.innerHTML = '';
+        if (!list || list.length === 0) {
+            container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
+            return;
+        }
 
-    let filtered = list;
+        list.forEach((item) => {
+            const div = document.createElement('div');
 
-    if (selectedPlants.size > 0) {
-        filtered = list.filter(item =>item.plants &&item.plants.some(p => selectedPlants.has(p.type)));
-    }
+            div.style.background = "#111";
+            div.style.padding = "10px";
+            div.style.border = "1px solid #222";
+            div.style.borderRadius = "8px";
+            div.style.color = "white";
+            div.style.cursor = "pointer";
 
-    if (!filtered || filtered.length === 0) {
-        container.innerHTML = "<div style='color:#666;padding:10px;'>No matching detections</div>";
-        return;
-    }
+            div.innerHTML = `
+                <div style="font-size:12px;">
+                    ${item.timestamp} — ${item.labels}
+                </div>
+            `;
 
-    filtered.forEach((item) => {
-        const div = document.createElement('div');
+            div.onclick = () => openArchiveItem(item);
 
-        div.style.background = "#111";
-        div.style.padding = "10px";
-        div.style.border = "1px solid #222";
-        div.style.borderRadius = "8px";
-        div.style.color = "white";
-        div.style.cursor = "pointer";
-
-        div.innerHTML = `
-            <div style="font-size:12px;">
-                🕒 ${item.timestamp} — ${item.plants.map(p => p.type).join(", ")}
-            </div>
-        `;
-
-        div.onclick = () => openArchiveItem(item);
-
-        container.appendChild(div);
+            container.appendChild(div);
+        });
     });
 }
 
 function openArchiveItem(item) {
-    document.getElementById('archive-list').style.display = 'none';
+    document.getElementById('archive-view').style.display = 'none';
     document.getElementById('page3-detail').style.display = 'block';
 
     const container = document.getElementById('detail-content');
 
     container.innerHTML = `
         <p><b>Time:</b> ${item.timestamp}</p>
-        <p><b>Location:</b> ${item.lat}, ${item.lon}</p>
-
-        <p><b>Detected Plants:</b></p>
-        <ul>
-            ${item.plants.map(p => `<li>${p.type} (${(p.confidence*100).toFixed(1)}%)</li>`).join("")}
-        </ul>
-
-        <p><b>Action:</b> ${item.action}</p>
-
-        <h3>Cam 1</h3>
-        ${item.cam1.image ? `<img src="${item.cam1.image}" style="width:100%;border-radius:10px;">` : "No image"}
-
-        <h3>Cam 2</h3>
-        ${item.cam2.image ? `<img src="${item.cam2.image}" style="width:100%;border-radius:10px;">` : "No image"}
+        <p><b>Labels:</b> ${item.labels}</p>
+        <p><b>Latitude:</b> ${item.lat}</p>
+        <p><b>Longitude:</b> ${item.lon}</p>
+        <img src="data:image/jpeg;base64,${item.image}" style="width:100%;border-radius:10px;margin-top:10px;">
     `;
 }
 
-
 function backToArchive() {
     document.getElementById('page3-detail').style.display = 'none';
-    document.getElementById('archive-list').style.display = 'block';
-
-    fetchArchive();
+    document.getElementById('archive-view').style.display = 'block';
 }
  
 </script>

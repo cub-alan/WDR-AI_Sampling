@@ -70,7 +70,7 @@ os.makedirs(Sample_Folder, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # AI setting to change performance / accuracy
-AI_INTERVAL = 0.3
+AI_INTERVAL = 0.5
 SCALE = 0.3
 MAX_MASKS = 5
 FRAME_SKIP = 2
@@ -89,6 +89,51 @@ Q_Sample = Queue(maxsize=100) # queue to manage image processing
 # create the paths for the SAM2 model config and checkpoint
 SAM_Config = "sam2.1_hiera_small.yaml" 
 SAM_Check = "sam2.1_hiera_small.pt"
+
+species = [
+        ("Pentaglottis sempervirens", "Green alkanet"),
+        ("Geum urbanum", "Herb bennet"),
+        ("Elymus repens", "Couch grass"),
+        ("Calystegia sepium", "Bindweed"),
+        ("Fallopia japonica", "Japanese knotweed"),
+        ("Aegopodium podagraria", "Ground elder"),
+        ("Oxalis spp.", "Oxalis"),
+        ("Ficaria verna", "Lesser celandine"),
+        ("Circaea lutetiana", "Enchanter's nightshade"),
+        ("Galium aparine", "Cleavers"),
+        ("Geranium robertianum", "Herb robert"),
+        ("Cardamine hirsuta", "Bittercress"),
+        ("Ranunculus repens", "Creeping buttercup"),
+        ("Urtica dioica", "Nettles"),
+        ("Cirsium arvense", "Creeping thistle"),
+        ("Chamerion angustifolium", "Rosebay willowherb"),
+        ("Stellaria media", "Common chickweed"),
+        ("Equisetum arvense", "Horsetail"),
+        ("Poa annua", "Annual meadow grass"),
+        ("Rumex obtusifolius", "Docks")
+    ]
+templates = [
+        "a botanical photograph of {}",
+        "a close-up of {} leaves",
+        "a {} plant growing in the wild",
+        "a detailed image of {} foliage",
+        "a clear photo of {} showing leaf structure",
+        "a photo of {} with visible leaf edges",
+        "a {} plant with serrated leaves",
+        "a {} plant with jagged leaf edges",
+        "a {} plant with smooth rounded leaves"
+    ]
+
+CLIP_TEXTS = []
+CLIP_LABEL_MAP = []
+
+for i, (sci, common) in enumerate(species):
+    name = f"{common} ({sci})"
+    for t in templates:
+        CLIP_TEXTS.append(t.format(name))
+        CLIP_LABEL_MAP.append(i)
+
+    CLIP_SPECIES_NAMES = [common for _, common in species]
 
 Latest_Frame = {"Cam1":None,"Cam2":None}
 Frame_Lock = Lock()
@@ -127,8 +172,6 @@ def toggle_mode():
         else:
             MODE["type"] = "LIVE"
             new_mode = "stream"
-
-    # 🔥 send to ESP32
     try:
         requests.get(f"{ESP32_1_URL}/mode?mode={new_mode}", timeout=2)
     except Exception as e:
@@ -401,9 +444,9 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
     results = []
 
     small = cv2.resize(frame, None, fx=SCALE, fy=SCALE)
-    #masks = SAM_Mask.generate(small)
-    masks = [{"bbox": [0, 0, small.shape[1], small.shape[0]]}]
 
+    # TEMP: full-frame mask (keep for now)
+    masks = [{"bbox": [0, 0, small.shape[1], small.shape[0]]}]
 
     print("Masks found:", len(masks))
 
@@ -417,6 +460,7 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
     for m in masks:
         x, y, w, h = [int(v) for v in m["bbox"]]
 
+        # scale back up
         x = int(x / SCALE)
         y = int(y / SCALE)
         w = int(w / SCALE)
@@ -438,32 +482,54 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         boxes.append((x, y, w, h))
 
     if not images:
-        return [],masks
+        return [], masks
 
     try:
         inputs = Bio_processor(
-        text=Targets,
-        images=images,
-        return_tensors="pt",
-        padding=True
-    ).to(device)
+            text=CLIP_TEXTS,
+            images=images,
+            return_tensors="pt",
+            padding=True
+        ).to(device)
+
         print("Images for CLIP:", len(images))
+
         with torch.no_grad():
             outputs = Bio_model(**inputs)
-            probs = outputs.logits_per_image.softmax(dim=1)
+            logits = outputs.logits_per_image.cpu().numpy()
 
-        print("Probs:", probs.shape)
     except Exception as e:
         print("[CLIP ERROR]", e)
         return [], masks
 
-    
-    for i, p in enumerate(probs):
-        idx = p.argmax().item()
-        conf = p[idx].item()
+    # -----------------------------
+    # AGGREGATE PER IMAGE
+    # -----------------------------
+    for img_idx, logit_vec in enumerate(logits):
 
-        if conf > 0.6:
-            results.append((Targets[idx], conf, boxes[i]))
+        scores = np.zeros(len(CLIP_SPECIES_NAMES))
+        counts = np.zeros(len(CLIP_SPECIES_NAMES))
+
+        for logit, idx in zip(logit_vec, CLIP_LABEL_MAP):
+            scores[idx] += logit
+            counts[idx] += 1
+
+        scores = scores / counts
+
+        exp_scores = np.exp(scores)
+        probs = exp_scores / exp_scores.sum()
+
+        best_idx = np.argmax(probs)
+        conf = probs[best_idx]
+
+        print(f"[CLIP] {CLIP_SPECIES_NAMES[best_idx]} {conf:.2f}")
+
+        if conf > 0.3:
+            results.append((
+                CLIP_SPECIES_NAMES[best_idx],
+                float(conf),
+                boxes[img_idx]
+            ))
 
     return results, masks
 
@@ -601,8 +667,6 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
 def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
     print("[AI] THREAD STARTED")
 
-    last_ai_time = 0
-
     while True:
         try:
             print("[AI] Loop alive")
@@ -623,6 +687,27 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             )
 
             print(f"[AI] Masks: {len(masks)}, Detections: {len(detections)}")
+
+            # -----------------------------
+            # SEND TO FRONTEND
+            # -----------------------------
+            _, buff = cv2.imencode('.jpg', frame)
+
+            labels = [d[0] for d in detections]
+
+            payload = {
+                "image": base64.b64encode(buff).decode(),
+                "labels": f"{cam}: {', '.join(labels) if labels else 'None'}",
+                "timestamp": sample["timestamp"],
+                "lat": sample["GNSS"].get("lat", 0),
+                "lon": sample["GNSS"].get("lon", 0)
+            }
+
+            try:
+                requests.post(f"{WDR_Webserver_URL}/add_detection",
+                              json=payload, timeout=2)
+            except:
+                pass
 
         except Exception as e:
             print("[AI ERROR]", e)
@@ -658,6 +743,7 @@ def main():
     Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
 
     SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs() # initialize the SAM2 and BioCLIP models
+
 
     # set the two cameras to be appart of the camera class
     Cam1 = Camera_CLASS()
