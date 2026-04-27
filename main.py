@@ -309,47 +309,39 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
         self.thread = Thread(target=self.Updater, daemon = True) # create the thread and continuously read frames from the stream
         self.thread.start() # start the thread
 
-    def Updater(self): # function that continuously captures frames from the stream
+    def Updater(self):
         while self.running:
             try:
-                # Use requests to get stream so we can see HEADERS
-                resp = requests.get(self.url, stream=True, timeout=5)
-                if resp.status_code != 200:
+                cap = cv2.VideoCapture(self.url)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                if not cap.isOpened():
+                    print(f"[{self.name}] Could not open stream: {self.url}")
                     time.sleep(2)
                     continue
 
-                bytes_data = b''
-                for chunk in resp.iter_content(chunk_size=2048):
-                    bytes_data += chunk
-                    
-                    # Find JPEG Start/End
-                    a = bytes_data.find(b'\xff\xd8')
-                    b = bytes_data.find(b'\xff\xd9')
-                    
-                    if a != -1 and b != -1:
-                        # 1. Look for X-GNSS in the header block before the JPEG start
-                        header_block = bytes_data[:a].decode('utf-8', errors='ignore')
-                        if "X-GNSS:" in header_block:
-                            try:
-                                json_str = header_block.split("X-GNSS:")[1].split("\r\n")[0].strip()
-                                gnss_data = json.loads(json_str)
-                                with GNSS_Lock:
-                                    GNSS_New.update(gnss_data)
-                            except: pass
+                print(f"[{self.name}] Stream opened: {self.url}")
 
-                        # 2. Extract and decode Image
-                        jpg = bytes_data[a:b+2]
-                        bytes_data = bytes_data[b+2:]
-                        
-                        img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
-                        if img is not None:
-                            with self.lock:
-                                self.Frame = img
-                                self.ret = True
-                            # Support the website preview
-                            with Frame_Lock:
-                                Latest_Frame[self.name] = img.copy()
-            except:
+                while self.running:
+                    ret, img = cap.read()
+
+                    if not ret or img is None:
+                        print(f"[{self.name}] Failed to read frame")
+                        break
+
+                    with self.lock:
+                        self.Frame = img
+                        self.ret = True
+
+                    with Frame_Lock:
+                        Latest_Frame[self.name] = img.copy()
+
+                    time.sleep(0.01)
+
+                cap.release()
+
+            except Exception as e:
+                print(f"[{self.name} STREAM ERROR] {self.url} -> {e}")
                 time.sleep(2)
 
 
