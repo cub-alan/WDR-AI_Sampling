@@ -220,7 +220,7 @@ def upload_file():
 
     filename = filename.replace("/", "_").replace("\\", "_")
 
-    save_path = Sample_Folder / filename
+    save_path = Path(Sample_Folder) / filename
 
     with open(save_path, "wb") as f:
         f.write(request.data)
@@ -613,7 +613,7 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
         with MODE_LOCK:
             mode = MODE["type"]
 
-        if torch.modeh.mode == "SD":
+        if mode == "SD":
             process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device)
             time.sleep(0.5)
             continue
@@ -722,20 +722,19 @@ def main():
 
     Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
 
-    SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs() # initialize the SAM2 and BioCLIP models
-
-
-    # set the two cameras to be appart of the camera class
+     # set the two cameras to be appart of the camera class
     Cam1 = Camera_CLASS()
     Cam2 = Camera_CLASS()
 
-    # initialize the camera streams with the urls set above
+     # initialize the camera streams with the urls set above
     Cam1.Init(Cam1_URL,"Cam1")
     Cam2.Init(Cam2_URL,"Cam2")
 
     #start all threads
 
     Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
+
+    SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs() # initialize the SAM2 and BioCLIP models
 
     #Thread(target=Feed_Folder_To_Queue,args=(TEST_FOLDER,), daemon=True).start()
 
