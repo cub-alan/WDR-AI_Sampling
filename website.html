@@ -341,7 +341,10 @@ h1{ /* title text styling */
     <div id="page2" style="display:none;">
         <h2>Map</h2>
         <div id="map"></div>
-        <button id="fieldBtn" class="cam-btn" style="margin:10px auto 0; display:block; width:50%; border-radius:8px;" onclick="toggleField()">Create Field Map</button>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+            <button id="fieldBtn" class="cam-btn" style="flex:1; border-radius:8px;" onclick="toggleField()">Start Field Map</button>
+            <button id="clearFieldBtn" class="cam-btn" style="flex:1; border-radius:8px;" onclick="clearFieldMap()">Clear Field Map</button>
+        </div>    
     </div>
    <div id="page3" style="display:none;">
 
@@ -753,14 +756,22 @@ function closeFilters() {
 
 function toggleField() {
     fieldTracking = !fieldTracking;
-    if (!fieldTracking) {
-        fieldCoords = [];
-        if (fieldPolygon) {
-            map.removeLayer(fieldPolygon);
-            fieldPolygon = null;
-        }
+
+    document.getElementById('fieldBtn').innerText = fieldTracking
+        ? 'Stop Field Map'
+        : 'Start Field Map';
+}
+
+function clearFieldMap() {
+    fieldTracking = false;
+    fieldCoords = [];
+
+    if (fieldPolygon) {
+        map.removeLayer(fieldPolygon);
+        fieldPolygon = null;
     }
-    document.getElementById('fieldBtn').innerText = fieldTracking ? 'Stop & Clear Field Map' : 'Create Field Map';
+
+    document.getElementById('fieldBtn').innerText = 'Start Field Map';
 }
 
 function hideLoading() {
@@ -799,9 +810,9 @@ function switchCam(id) {
     btn2.classList.toggle('active', id === 2);
 
     if (id === 1) {
-    streamImg.src = "http://172.20.10.5:80/stream1";
+    streamImg.src = "/stream1";
     } else {
-    streamImg.src = "http://172.20.10.6:80/stream2";
+    streamImg.src = "/stream2";
     }
 }
 

@@ -66,6 +66,28 @@ GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
 DATA_DIR = "data"
 
+# -----------------------------
+# TEST / LIVE MIXED MODE
+# -----------------------------
+TEST_GNSS = True               # fake GPS data
+TEST_AI_ARCHIVE = True         # use Test_Images for archive / AI proof
+USE_LIVE_CAMERA_STREAMS = True # show real ESP32 live feeds
+TEST_SKIP_AI = True            # fake AI labels from filenames
+
+TEST_GPS_PATH = [
+    {"lat": 50.462340, "lon": -4.038657, "valid": 1, "sats": 10, "alt": 45.2},
+    {"lat": 50.462368, "lon": -4.038601, "valid": 1, "sats": 11, "alt": 45.4},
+    {"lat": 50.462356, "lon": -4.038487, "valid": 1, "sats": 12, "alt": 45.5},
+    {"lat": 50.462321, "lon": -4.038607, "valid": 1, "sats": 10, "alt": 45.3},
+    {"lat": 50.462490, "lon": -4.038180, "valid": 1, "sats": 10, "alt": 45.2},
+    {"lat": 50.462405, "lon": -4.037990, "valid": 1, "sats": 11, "alt": 45.4},
+    {"lat": 50.462246, "lon": -4.038368, "valid": 1, "sats": 12, "alt": 45.5},
+    {"lat": 50.462294, "lon": -4.038550, "valid": 1, "sats": 10, "alt": 45.3}
+]
+
+TEST_GPS_INDEX = 0
+
+
 os.makedirs(Sample_Folder, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -258,43 +280,6 @@ def register_mdns(port):
     zeroconf.register_service(service)
     return zeroconf
 
-## create a function for test images
-def Feed_Folder_To_Queue(folder_path, loop=True):
-    files = [f for f in os.listdir(folder_path) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-    files.sort()
-
-    if not files:
-        print("[TEST FEED] No images found in folder")
-        return
-
-    print(f"[TEST FEED] Loaded {len(files)} images")
-
-    while True:
-        for file in files:
-            path = os.path.join(folder_path, file)
-
-            frame = cv2.imread(path)
-            if frame is None:
-                continue
-
-            sample = {
-                "frame": frame,
-                "GNSS": {"lat": 0, "lon": 0, "valid": 1, "sats": 10},
-                "Cam": "Cam1",  # important for your UI
-                "timestamp": datetime.now().strftime("%H:%M:%S")
-            }
-
-            try:
-                Q_Sample.put_nowait(sample)
-                print(f"[QUEUE] {file}")
-            except Full:
-                print("[QUEUE FULL] Dropping frame")
-
-            time.sleep(0.3)  # simulate ~3 FPS
-
-        if not loop:
-            break
-
 class Camera_CLASS: # a class to receive and process streams from both cameras
 
     def Init(self,url,name): #function that initializes the camera stream receiver
@@ -395,8 +380,12 @@ def stream2():
 
 @app.route("/status")
 def status():
+    if TEST_GNSS:
+        point = next_test_gnss()
+        return jsonify(point)
+
     with GNSS_Lock:
-        return GNSS_New.copy()
+        return jsonify(GNSS_New.copy())
 
 def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
@@ -638,11 +627,24 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             with Targets_Lock:
                 targets = Targets.copy()
 
-            print("[AI] Running Frame_Process")
+            if TEST_AI_ARCHIVE and TEST_SKIP_AI:
+                # fake AI detection for proving archive, images, GPS and map pins
+                h, w = frame.shape[:2]
+                label = sample.get("test_label", "Unknown")
 
-            detections, masks = Frame_Process(
+                detections = [
+                (label, 0.95, (int(w * 0.2), int(h * 0.2), int(w * 0.6), int(h * 0.6)))
+                ]
+
+                masks = [{"bbox": [0, 0, w, h]}]
+
+                print(f"[TEST AI] {cam}: {label}")
+            else:
+                print("[AI] Running Frame_Process")
+
+                detections, masks = Frame_Process(
                 frame, SAM_Mask, Bio_model, Bio_processor, Device, targets
-            )
+                )
 
             print(f"[AI] Masks: {len(masks)}, Detections: {len(detections)}")
 
@@ -726,33 +728,172 @@ def get_detections():
             print("[READ ERROR]", file, e)
 
     return jsonify(detections)
+
+def Ensure_Test_Images(folder_path):
+    os.makedirs(folder_path, exist_ok=True)
+
+    existing = [f for f in os.listdir(folder_path) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    if existing:
+        return
+
+    print("[TEST IMAGE] No test images found, creating simple sample images")
+
+    samples = [
+        ("Cam1_Dandelion_test.jpg", "Dandelion", (80, 180, 80)),
+        ("Cam2_Nettles_test.jpg", "Nettles", (60, 160, 60)),
+        ("Cam1_Bindweed_test.jpg", "Bindweed", (70, 170, 70)),
+        ("Cam2_Creeping_buttercup_test.jpg", "Creeping buttercup", (90, 190, 90)),
+    ]
+
+    for filename, label, colour in samples:
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        img[:] = (35, 110, 35)
+        cv2.circle(img, (320, 240), 110, colour, -1)
+        cv2.circle(img, (250, 210), 55, (45, 140, 45), -1)
+        cv2.circle(img, (390, 210), 55, (45, 140, 45), -1)
+        cv2.putText(img, label, (65, 430), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3)
+        cv2.imwrite(str(Path(folder_path) / filename), img)
+
+
+def next_test_gnss():
+    global TEST_GPS_INDEX, GNSS_New
+
+    point = TEST_GPS_PATH[TEST_GPS_INDEX % len(TEST_GPS_PATH)].copy()
+    TEST_GPS_INDEX += 1
+
+    with GNSS_Lock:
+        GNSS_New.update(point)
+
+    return point
+
+def Test_GNSS_Loop():
+    while True:
+        point = next_test_gnss()
+        print(f"[TEST GNSS] lat={point['lat']} lon={point['lon']} sats={point['sats']}")
+        time.sleep(1)
+
+def guess_test_label(filename):
+    name = filename.lower().replace("_", " ").replace("-", " ")
+
+    if "dandelion" in name:
+        return "Dandelion"
+    if "nettle" in name:
+        return "Nettles"
+    if "bindweed" in name:
+        return "Bindweed"
+    if "buttercup" in name:
+        return "Creeping buttercup"
+    if "thistle" in name:
+        return "Creeping thistle"
+    if "couch" in name:
+        return "Couch grass"
+
+    return "Unknown"
+
+
+def Feed_Folder_To_Queue(folder_path, loop=True):
+    Ensure_Test_Images(folder_path)
+
+    folder = Path(folder_path)
+    files = sorted([
+        f for f in folder.iterdir()
+        if f.suffix.lower() in [".jpg", ".jpeg", ".png"]
+    ])
+
+    print(f"[TEST FEED] Looking in: {folder.resolve()}")
+    print(f"[TEST FEED] Files found: {[f.name for f in files]}")
+
+    if not files:
+        print("[TEST FEED ERROR] No test images found")
+        return
+
+    while True:
+        for path in files:
+            frame = cv2.imread(str(path))
+
+            if frame is None:
+                print(f"[TEST FEED ERROR] Could not read image: {path}")
+                continue
+
+            cam_name = "Cam2" if "cam2" in path.name.lower() else "Cam1"
+
+            if TEST_GNSS:
+                gnss = next_test_gnss()
+            else:
+                with GNSS_Lock:
+                    gnss = GNSS_New.copy()
+
+            sample = {
+                "frame": frame,
+                "GNSS": gnss,
+                "Cam": cam_name,
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "file": path.name,
+                "test_label": guess_test_label(path.name)
+            }
+
+            try:
+                Q_Sample.put_nowait(sample)
+                print(
+                    f"[TEST QUEUE] SENT {path.name} "
+                    f"label={sample['test_label']} "
+                    f"lat={gnss['lat']} lon={gnss['lon']}"
+                )
+            except Full:
+                print("[TEST QUEUE ERROR] Queue full")
+
+            time.sleep(1)
+
+        if not loop:
+            break
+
 def main():
     zeroconf = register_mdns(PORT)
 
     Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
 
-     # set the two cameras to be appart of the camera class
+    # -----------------------------
+    # LIVE CAMERA STREAMS
+    # -----------------------------
     Cam1 = Camera_CLASS()
     Cam2 = Camera_CLASS()
 
-     # initialize the camera streams with the urls set above
-    Cam1.Init(Cam1_URL,"Cam1")
-    Cam2.Init(Cam2_URL,"Cam2")
+    if USE_LIVE_CAMERA_STREAMS:
+        print("[LIVE STREAM] Starting real ESP32 camera streams")
+        Cam1.Init(Cam1_URL, "Cam1")
+        Cam2.Init(Cam2_URL, "Cam2")
 
-    #start all threads
+    # -----------------------------
+    # GNSS SOURCE
+    # -----------------------------
+    if TEST_GNSS:
+        print("[TEST GNSS] Using fake GPS path")
+        Thread(target=Test_GNSS_Loop, daemon=True).start()
+    else:
+        print("[LIVE GNSS] Reading real GNSS from ESP32")
+        Thread(target=Get_GNSS, daemon=True).start()
 
-    Thread(target=Sample_Process,args=(Cam1,Cam2), daemon=True).start()
-
-    SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs() # initialize the SAM2 and BioCLIP models
-
-    #Thread(target=Feed_Folder_To_Queue,args=(TEST_FOLDER,), daemon=True).start()
+    # -----------------------------
+    # AI / ARCHIVE SOURCE
+    # -----------------------------
+    if TEST_SKIP_AI:
+        SAM_Mask, Bio_model, Bio_processor, Device = None, None, None, "cpu"
+    else:
+        SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs()
 
     Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
 
+    if TEST_AI_ARCHIVE:
+        print("[TEST AI/ARCHIVE] Feeding Test_Images into archive")
+        Thread(target=Feed_Folder_To_Queue, args=(TEST_FOLDER,), daemon=True).start()
+    else:
+        print("[LIVE AI] Sampling real camera frames")
+        Thread(target=Sample_Process, args=(Cam1, Cam2), daemon=True).start()
 
     try:
         while True:
             time.sleep(1)
+
     except KeyboardInterrupt:
         print("\nShutting down...")
         zeroconf.unregister_all_services()
