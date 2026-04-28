@@ -307,7 +307,7 @@ h1{ /* title text styling */
             <!-- spacer -->
             <div style="flex:1;"></div>
 
-            <button id="btn-sd" class="cam-btn" onclick="toggleMode()">SD</button>
+            <button id="btn-sd" class="cam-btn" onclick="alert('SD disabled during stream testing')">SD</button>
 
         </div>
 
@@ -792,8 +792,6 @@ function showError() {
 }
 function switchCam(id) {
 
-    activeCam = id;
-    
     const streamImg = document.getElementById('stream-primary');
     const loading = document.getElementById('cam-loading');
     const btn1 = document.getElementById('btn-cam1');
@@ -1102,17 +1100,6 @@ setInterval(() => {
         updateWeedPins();
     }
 }, 3000);
-
-let activeCam = 1;
-
-setInterval(() => {
-    const isSD = document.getElementById('btn-sd').classList.contains('active');
-    const livePageOpen = document.getElementById('page1').style.display !== 'none';
-
-    if (!isSD && livePageOpen) {
-        switchCam(activeCam);
-    }
-}, 30000);
 
 </script>
 </body>
