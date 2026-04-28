@@ -72,7 +72,7 @@ DATA_DIR = "data"
 TEST_GNSS = True               # fake GPS data
 TEST_AI_ARCHIVE = True         # use Test_Images for archive / AI proof
 USE_LIVE_CAMERA_STREAMS = True # show real ESP32 live feeds
-TEST_SKIP_AI = True            # fake AI labels from filenames
+TEST_SKIP_AI = False            # fake AI labels from filenames
 
 TEST_GPS_PATH = [
     {"lat": 50.462340, "lon": -4.038657, "valid": 1, "sats": 10, "alt": 45.2},
