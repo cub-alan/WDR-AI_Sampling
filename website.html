@@ -429,7 +429,7 @@ h1{ /* title text styling */
     const Cam1_URL = "http://172.20.10.5:80";
     const Cam2_URL = "http://172.20.10.6:80"; 
 
-    document.getElementById("stream-primary").src ="http://172.20.10.5:80/stream1?t=" + Date.now();
+    window.onload = () => {fetchArchive();switchCam(1);};
 
     let selectedPlants = new Set();
 
@@ -790,8 +790,8 @@ function showError() {
     }
     loading.classList.add('active');
 }
-function switchCam(id) {
 
+function switchCam(id) {
     const streamImg = document.getElementById('stream-primary');
     const loading = document.getElementById('cam-loading');
     const btn1 = document.getElementById('btn-cam1');
@@ -810,37 +810,25 @@ function switchCam(id) {
     btn1.classList.toggle('active', id === 1);
     btn2.classList.toggle('active', id === 2);
 
-    // IMPORTANT:
-    // Close the old MJPEG stream before opening the new one.
-    streamImg.onload = null;
-    streamImg.onerror = null;
-    streamImg.src = "";
+    streamImg.onload = function() {
+        hideLoading();
+    };
 
-    setTimeout(() => {
-        streamImg.onload = function() {
-            hideLoading();
-        };
+    streamImg.onerror = function() {
+        showError();
+    };
 
-        streamImg.onerror = function() {
-            showError();
-        };
-
-        if (id === 1) {
-            streamImg.src = "http://172.20.10.5:80/stream1?t=" + Date.now();
-        } else {
-            streamImg.src = "http://172.20.10.6:80/stream2?t=" + Date.now();
-        }
-    }, 300);
+    if (id === 1) {
+        streamImg.src = "http://172.20.10.5:80/stream1";
+    } else {
+        streamImg.src = "http://172.20.10.6:80/stream2";
+    }
 }
-
 // Ensure the image hides the loader when it finally connects
 document.getElementById('stream-primary').onload = function() {
     document.getElementById('cam-loading').classList.remove('active');
 };
 
-window.onload = () => {
-    fetchArchive();
-};
 
 function fetchDetections() {
     fetch('/api/detections')
