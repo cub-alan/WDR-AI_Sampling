@@ -68,7 +68,7 @@ GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
 # -----------------------------
 TEST_GNSS = True               # fake GPS data
 TEST_AI_ARCHIVE = True         # use Test_Images for archive / AI proof
-USE_LIVE_CAMERA_STREAMS = True # show real ESP32 live feeds
+USE_LIVE_CAMERA_STREAMS = False # show real ESP32 live feeds
 TEST_SKIP_AI = False            # fake AI labels from filenames
 
 TEST_GPS_PATH = [
