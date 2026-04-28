@@ -285,8 +285,7 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
     def Init(self,url,name): #function that initializes the camera stream receiver
         self.url = url # URL of the camera stream
         self.name = name # given name for the camera (mostly for debugging purposes)
-        self.capture = cv2.VideoCapture(self.url) # OpenCV function to get the video streams from the URL
-        self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1) # set the buffer size to 1 to reduce latency and ensure we are getting the most recent frame from the stream
+        self.capture = None
         self.Frame = None # variable for current frame received from the stream
         self.ret = False  # variable to show if frame capture was successfully
         self.lock = Lock() # create a mutex to handle the camera stream
@@ -847,6 +846,11 @@ def Feed_Folder_To_Queue(folder_path, loop=True):
         if not loop:
             break
 
+def start_camera_delayed(cam, url, name, delay):
+    time.sleep(delay)
+    print(f"[LIVE STREAM] Starting {name}")
+    cam.Init(url, name)
+
 def main():
     zeroconf = register_mdns(PORT)
 
@@ -859,9 +863,9 @@ def main():
     Cam2 = Camera_CLASS()
 
     if USE_LIVE_CAMERA_STREAMS:
-        print("[LIVE STREAM] Starting real ESP32 camera streams")
-        Cam1.Init(Cam1_URL, "Cam1")
-        Cam2.Init(Cam2_URL, "Cam2")
+        print("[LIVE STREAM] Camera streams will start in background")
+        Thread(target=start_camera_delayed,args=(Cam1, Cam1_URL, "Cam1", 1),daemon=True).start()
+        Thread(target=start_camera_delayed,args=(Cam2, Cam2_URL, "Cam2", 2),daemon=True).start()
 
     # -----------------------------
     # GNSS SOURCE
