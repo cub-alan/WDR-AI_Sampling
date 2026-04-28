@@ -206,17 +206,21 @@ def set_mode():
 
     return jsonify({"status": "ok"}) # return debug info to confirm the mode change was successful
 
+# used for the camera to send SD card data over 
 @app.route("/api/upload_file", methods=['POST'])
 def upload_file():
+    # set the sender and receiver file names
     filename = request.headers.get("File-Name", "unknown.jpg")
     camera_id = request.headers.get("Camera-ID", "unknown")
 
+    # adjust to remove unwanted characters that can cause file saving issues
     filename = filename.replace("/", "_").replace("\\", "_")
 
+    # save the file to the sample queue folder for processing by the AI
     save_path = Path(Sample_Folder) / filename
 
-    with open(save_path, "wb") as f:
-        f.write(request.data)
+    with open(save_path, "wb") as f: 
+        f.write(request.data) # write the file data to the specified path
 
     print(f"[UPLOAD] {camera_id}: {filename}")
 
@@ -224,40 +228,52 @@ def upload_file():
         "status": "ok",
         "camera": camera_id,
         "filename": filename
-    })
+    }) # return debug info to confirm the file upload was successful
+
+@app.route("/stream1")
+def stream1():
+    return Response(generate_stream("Cam1"),mimetype='multipart/x-mixed-replace; boundary=frame') # sets up the URL for the first camera stream
+
+@app.route("/stream2")
+def stream2():
+    return Response(generate_stream("Cam2"),mimetype='multipart/x-mixed-replace; boundary=frame') # sets up the URL for the second camera stream
+
+@app.route("/status")
+def status():
+    if TEST_GNSS: # if in test mode return the test gps data then update it to the next point
+        point = next_test_gnss()
+        return jsonify(point)
+
+    with GNSS_Lock: # if not in test mode return the current gps data
+        return jsonify(GNSS_New.copy())
+
 
 # a function to be able to set the url name to wdr.local
 def register_mdns(port):
-    zeroconf = Zeroconf()
+    zeroconf = Zeroconf() #create namespce for zeroconf
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # create a socket to get the local IP address
     try:
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        s.connect(("8.8.8.8", 80)) # connect to a public DNS
+        ip = s.getsockname()[0] # get the local IP address from the socket
     finally:
-        s.close()
+        s.close() # close the socket
 
-    print(f"[mDNS] http://wdr.local:{port} → {ip}")
+    print(f" http://wdr.local:{port} → {ip}")
 
-    service = ServiceInfo(
-        "_http._tcp.local.",
-        "WDR._http._tcp.local.",
-        addresses=[socket.inet_aton(ip)],
-        port=port,
-        properties={},
-        server=HOSTNAME,
-    )
+    service = ServiceInfo("_http._tcp.local.","WDR._http._tcp.local.",addresses=[socket.inet_aton(ip)],port=port,properties={},server=HOSTNAME,) # create the service info w/ local IP address and specified port
 
-    zeroconf.register_service(service)
-    return zeroconf
+    zeroconf.register_service(service) # register the URL to allow it to be accessable from local network
+    return zeroconf 
 
 class Camera_CLASS: # a class to receive and process streams from both cameras
 
     def Init(self,url,name): #function that initializes the camera stream receiver
         self.url = url # URL of the camera stream
-        self.name = name # given name for the camera (mostly for debugging purposes)
+        self.name = name # given name for the camera (mostly for debugging)
+
         self.capture = None
-        self.Frame = None # variable for current frame received from the stream
+        self.Frame = None 
         self.ret = False  # variable to show if frame capture was successfully
         self.lock = Lock() # create a mutex to handle the camera stream
         self.running = True #  flag that controls the stream thread
@@ -267,10 +283,10 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
     def Updater(self):
         while self.running:
             try:
-                cap = cv2.VideoCapture(self.url)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                cap = cv2.VideoCapture(self.url) # use open cv to capture the video stream from the given URL
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) # set the buffer size to 1 to reduce lag
 
-                if not cap.isOpened():
+                if not cap.isOpened(): # check if the stream was opened successfully
                     print(f"[{self.name}] Could not open stream: {self.url}")
                     time.sleep(2)
                     continue
@@ -278,89 +294,58 @@ class Camera_CLASS: # a class to receive and process streams from both cameras
                 print(f"[{self.name}] Stream opened: {self.url}")
 
                 while self.running:
-                    ret, img = cap.read()
+                    ret, img = cap.read() # read a frame from the stream and set the variables to show if it was successful
 
-                    if not ret or img is None:
+                    if not ret or img is None: # check if it was successfully read
                         print(f"[{self.name}] Failed to read frame")
                         break
 
-                    with self.lock:
+                    with self.lock: # use mutex to safely update the variables
                         self.Frame = img
                         self.ret = True
 
-                    with Frame_Lock:
+                    with Frame_Lock: # use mutex to update the latest frame variable for the webserver to access
                         Latest_Frame[self.name] = img.copy()
 
                     time.sleep(0.01)
 
-                cap.release()
+                cap.release() #release the stream
 
-            except Exception as e:
+            except Exception as e: #check for an error
                 print(f"[{self.name} STREAM ERROR] {self.url} -> {e}")
                 time.sleep(2)
 
 
     def Get_Frame(self): # function to retrieve the current frame from the stream
-        with self.lock: # acquire the mutex lock to safely access the frame variable
-            if self.ret and self.Frame is not None: # if the last capture was successful
-                return True, self.Frame.copy() # return the current frame
-            else: # if capture failed
-                return False, None # return empty
+        with self.lock: # use the mutex to safely access the frame variables
+            if self.ret and self.Frame is not None: # check if the frame was successfully captured and if so copy it
+                return True, self.Frame.copy() 
+            else: # if capture failed return empty
+                return False, None 
 
-def generate_stream(cam):
-    blank = np.zeros((480, 640, 3), dtype=np.uint8)
+def generate_stream(cam): 
+    blank = np.zeros((480, 640, 3), dtype=np.uint8) # create a blank image to show if the stream is not available
 
     while True:
-        with Frame_Lock:
+        with Frame_Lock: # use mutex to access the latest frame
             frame = Latest_Frame.get(cam)
 
-        if frame is None:
+        if frame is None: # if there is no frame available use the blank image
             frame = blank.copy()
-            cv2.putText(
-                frame,
-                f"Waiting for {cam}",
-                (120, 240),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2
-            )
 
-        ok, buffer = cv2.imencode(".jpg", frame)
-        if not ok:
+        ok, buffer = cv2.imencode(".jpg", frame) # encode the frame as a jpeg to be sent to the webserver
+        if not ok: # if the encoding failed wait 0.05 seconds and try again
             time.sleep(0.05)
             continue
 
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" +
-            buffer.tobytes() +
-            b"\r\n"
-        )
+        yield ( b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" +buffer.tobytes() +b"\r\n")# use a generator to continuously send the frames to the webserver
 
         time.sleep(0.03)
-
-@app.route("/stream1")
-def stream1():
-    return Response(generate_stream("Cam1"),mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route("/stream2")
-def stream2():
-    return Response(generate_stream("Cam2"),mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route("/status")
-def status():
-    if TEST_GNSS:
-        point = next_test_gnss()
-        return jsonify(point)
-
-    with GNSS_Lock:
-        return jsonify(GNSS_New.copy())
 
 def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
     print("\nVerifying AI Models...")
-    if not os.path.exists(SAM_Check):
+    if not os.path.exists(SAM_Check): # check if the SAM2 checkpoint exists and if not print an error and exit
         print(f"ERROR: {SAM_Check} missing! Place it in the root folder.")
         sys.exit(1)
 
@@ -373,11 +358,11 @@ def Init_Libs(): # function to initialize the SAM2 and BioCLIP models
 
     sam2 = build_sam2(config_file=SAM_Config, ckpt_path=str(SAM_Check), device = Device) # build the sam 2 model using the config/checkpoint + use cpu to avoid using cuda 
 
-    SAM_Mask = SAM2AutomaticMaskGenerator(sam2) 
+    SAM_Mask = SAM2AutomaticMaskGenerator(sam2) # generate the SAM2 mask
     
 
     Bio_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(Device) # load the BioCLIP model and set to cpu to avoid cuda errors
-    Bio_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    Bio_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32") # load the BioCLIP processor
 
     print("SAM2 and BioCLIP INIT Complete")
 
@@ -387,37 +372,37 @@ def Sample_Process(Stream1, Stream2):
     count = 0
 
     while True:
-        with MODE_LOCK:
+        with MODE_LOCK: # check the mode and if it is SD wait and continue to the next loop
             if MODE["type"] == "SD":
                 time.sleep(0.2)
                 continue
 
-        count += 1
+        count += 1 
 
-        if count % FRAME_SKIP != 0:
+        if count % FRAME_SKIP != 0: # if frame skip is more than 1 only process every certain amount of frames to reduce load
             time.sleep(0.01)
             continue
 
-        with GNSS_Lock:
+        with GNSS_Lock: # use mutex to safely copy the current GNSS data to be sent with the camera frames
             Current_GNSS = GNSS_New.copy()
 
-        TimeStamp = datetime.now().strftime("%H-%M-%S-%f")
+        TimeStamp = datetime.now().strftime("%H-%M-%S-%f") # create a timestamp to be used for saving the camera frames
 
-        for cam in [Stream1, Stream2]:
-            ret, frame = cam.Get_Frame()
+        for cam in [Stream1, Stream2]: # get both camera frames
+            ret, frame = cam.Get_Frame() # get the current frame from the camera stream
 
             print(f"[SAMPLE CHECK] {cam.name} ret={ret}")
 
-            if ret:
+            if ret: # if frame was retreived
+
                 # Save sampled camera frame into Sample_Queue folder
                 filename = f"{cam.name}_{TimeStamp}.jpg"
                 save_path = Path(Sample_Folder) / filename
                 cv2.imwrite(str(save_path), frame)
                 print(f"[SAMPLE SAVED] {save_path}")
 
-                # Also keep sending it to the AI queue
                 try:
-                    Q_Sample.put_nowait({
+                    Q_Sample.put_nowait({ # put the frame and relevent data into the processing queue
                         "frame": frame,
                         "GNSS": Current_GNSS,
                         "Cam": cam.name,
@@ -425,7 +410,7 @@ def Sample_Process(Stream1, Stream2):
                         "file": filename
                     })
                     print(f"[SAMPLE SAVED] {filename}")
-                except Full:
+                except Full: # if the queue is full print debug and drop the frame
                     print("[QUEUE FULL] Dropping frame")
 
         time.sleep(0.5)
@@ -434,91 +419,85 @@ def Get_GNSS():
     global GNSS_New
     while True:
         try:
-            GNSS_Receive = requests.get(GNSS_IP, timeout=5)
-            GNSS_Data = GNSS_Receive.json()
+            GNSS_Receive = requests.get(GNSS_IP, timeout=5) # make a request to the GNSS URL to get the current GPS data from the camera stream
+            GNSS_Data = GNSS_Receive.json() # parse the data into json format
 
-            with GNSS_Lock:
-                GNSS_New.update(GNSS_Data)
+            with GNSS_Lock: # with the gnss mutex
+                GNSS_New.update(GNSS_Data) # update the current GNSS data
 
-        except Exception as e:
+        except Exception as e: # if there is an error print debug info
             print("[GNSS ERROR]", e)
 
         time.sleep(1)
 
 def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
-    results = []
-    # Use full frame directly for testing (no scaling issues)
-    h_img, w_img = frame.shape[:2]
+    results = [] # a list to store the results of the AI processing
 
-    masks = [{"bbox": [0, 0, w_img, h_img]}]
+    h_img, w_img = frame.shape[:2] # get the height and width of the image
 
-    print("Masks found:", len(masks))
+    masks = [{"bbox": [0, 0, w_img, h_img]}] # create a mask for the entire image
 
-    masks = masks[:MAX_MASKS]
+    print("Masks found:", len(masks)) 
+
+    masks = masks[:MAX_MASKS] # limit the number of masks to be process
 
     images = []
     boxes = []
 
-    h_img, w_img = frame.shape[:2]
+    h_img, w_img = frame.shape[:2] # get the height and width of the image again (in case it was changed by SAM2)
 
     for m in masks:
-        x, y, w, h = [int(v) for v in m["bbox"]]
+        x, y, w, h = [int(v) for v in m["bbox"]] # get the box of the mask as ints
 
-        if w < 20 or h < 20:
+        if w < 20 or h < 20: # if the box is too small skip it
             continue
-
+        
+        # make sure the box is within the image bounds
         x = max(0, min(x, w_img - 1))
         y = max(0, min(y, h_img - 1))
         w = max(1, min(w, w_img - x))
         h = max(1, min(h, h_img - y))
 
-        crop = frame[y:y+h, x:x+w]
-        if crop.size == 0:
+        crop = frame[y:y+h, x:x+w] # crop the image to the box of the mask
+        if crop.size == 0: # if the crop is empty skip it
             continue
 
-        images.append(Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)))
-        boxes.append((x, y, w, h))
+        images.append(Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))) # convert the crop to a RGB
+        boxes.append((x, y, w, h)) # store the box of the mask
 
-    if not images:
+    if not images: # if there are no images to process return empty
         return [], masks
 
     try:
-        inputs = Bio_processor(
-            text=CLIP_TEXTS,
-            images=images,
-            return_tensors="pt",
-            padding=True
-        ).to(device)
+        inputs = Bio_processor(text=CLIP_TEXTS,images=images,return_tensors="pt",padding=True).to(device) # set up input for bioclip
 
         print("Images for CLIP:", len(images))
 
-        with torch.no_grad():
-            outputs = Bio_model(**inputs)
-            logits = outputs.logits_per_image.cpu().numpy()
+        with torch.no_grad(): # run the bioclip model on the images and text inputs
+            outputs = Bio_model(**inputs) # get the output from bioclip
+            logits = outputs.logits_per_image.cpu().numpy() # get the probabilities for each image 
 
-    except Exception as e:
+    except Exception as e: # if there is an error with bioclip print debug info 
         print("[CLIP ERROR]", e)
         return [], masks
 
-    # -----------------------------
-    # AGGREGATE PER IMAGE
-    # -----------------------------
-    for img_idx, logit_vec in enumerate(logits):
+    for img_idx, logit_vec in enumerate(logits): # for each image get the corresponding probability scores for each plant type
 
-        scores = np.zeros(len(CLIP_SPECIES_NAMES))
-        counts = np.zeros(len(CLIP_SPECIES_NAMES))
+        scores = np.zeros(len(CLIP_SPECIES_NAMES)) # create a list to store the scores for each plant type
+        counts = np.zeros(len(CLIP_SPECIES_NAMES)) # create a list to count how many times a plant type was scored (due to the templates)
 
-        for logit, idx in zip(logit_vec, CLIP_LABEL_MAP):
-            scores[idx] += logit
-            counts[idx] += 1
+        for logit, idx in zip(logit_vec, CLIP_LABEL_MAP): 
+            scores[idx] += logit    # add the logit score to the corresponding plant type
+            counts[idx] += 1    # add one to the count for that plant type
 
-        scores = scores / counts
+        scores = scores / counts # average the scores for each plant type
 
-        exp_scores = np.exp(scores)
-        probs = exp_scores / exp_scores.sum()
+        # apply softmax to the scores to get the final probabilities
+        exp_scores = np.exp(scores) 
+        probs = exp_scores / exp_scores.sum() 
 
-        best_idx = np.argmax(probs)
+        best_idx = np.argmax(probs) 
         conf = probs[best_idx]
 
         print(f"[CLIP] {CLIP_SPECIES_NAMES[best_idx]} {conf:.2f}")
@@ -611,9 +590,6 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
 
             print(f"[AI] Masks: {len(masks)}, Detections: {len(detections)}")
 
-            # -----------------------------
-            # SEND TO FRONTEND
-            # -----------------------------
             _, buff = cv2.imencode('.jpg', frame)
 
             payload = {
@@ -820,9 +796,6 @@ def main():
 
     Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
 
-    # -----------------------------
-    # LIVE CAMERA STREAMS
-    # -----------------------------
     Cam1 = None
     Cam2 = None
 
@@ -832,9 +805,6 @@ def main():
         Thread(target=start_camera_delayed,args=(Cam1, Cam1_URL, "Cam1", 1),daemon=True).start()
         Thread(target=start_camera_delayed,args=(Cam2, Cam2_URL, "Cam2", 2),daemon=True).start()
 
-    # -----------------------------
-    # GNSS SOURCE
-    # -----------------------------
     if TEST_GNSS:
         print("[TEST GNSS] Using fake GPS path")
         Thread(target=Test_GNSS_Loop, daemon=True).start()
@@ -842,9 +812,6 @@ def main():
         print("[LIVE GNSS] Reading real GNSS from ESP32")
         Thread(target=Get_GNSS, daemon=True).start()
 
-    # -----------------------------
-    # AI / ARCHIVE SOURCE
-    # -----------------------------
     if TEST_SKIP_AI:
         SAM_Mask, Bio_model, Bio_processor, Device = None, None, None, "cpu"
     else:
