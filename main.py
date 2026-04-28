@@ -1,31 +1,28 @@
 # Jacob Holwill 10859926
-# this code is the program for image segmentation and ai detection of weeds for the weed detection robot.
+# this code executes bioclip and sam 2 on images taken by the WDR and all relevent data with them and then sets up a space to run a webserver with all of the data on
 
-# git clone https://github.com/cub-alan/WDR-AI_Sampling
-# cd WDR-AI_Sampling    
 # python -m venv venv
 # venv\Scripts\activate
 # pip install -r requirements.txt
 
-#import the libraries needed to run the install requirements function
+#import the libraries needed to execute my code
 import os
 import sys
 import cv2 # open cv library
 import time
 import numpy as np # for numerical operations on large image matricies 
 import requests # for making HTTP requests
-import json # formats data into web readable packages
+import json # used to format data into webserver readable
 import base64 # converts images to long strings for web transmission
-from pathlib import Path # for handling file paths
+from pathlib import Path # for handling the file path for data queue  
 from datetime import datetime # for timestamping images received from the server
 import torch # for Bioclip ai model handling
 from PIL import Image
 from threading import Thread, Lock # for handling multiple image processing threads
-from queue import Queue, Empty, Full # for managing the image processing queue
+from queue import Queue, Full # for managing the image processing queue
 from flask import Flask, request, Response, jsonify
 
 # imports for website
-from http.server import SimpleHTTPRequestHandler, HTTPServer
 import socket
 from zeroconf import Zeroconf, ServiceInfo
 
@@ -40,37 +37,36 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 #BioCLIP imports
 from transformers import CLIPModel, CLIPProcessor 
 
-MODE = {"type": "LIVE"}
-MODE_LOCK = Lock()
+MODE = {"type": "LIVE"} # creates a variable to attempt to switch from live camera and SD card streams
+MODE_LOCK = Lock() # mutex lock to safely update the MODE
 
-PORT = 8000
+PORT = 8000 # wifi port used for the webserver
 
-HOSTNAME = "wdr.local."  # must end with dot
+HOSTNAME = "wdr.local."  # Set the webserver url so it can be accessed from https://wdr.local:8000
 
-WDR_Webserver_URL = f"http://127.0.0.1:{PORT}"
+WDR_Webserver_URL = f"http://127.0.0.1:{PORT}" # URL of the WDR webserver for backend use
 
-TEST_FOLDER = "Test_Images"
-# test URLs 
+# urls for testing purposes
 ESP32_1_URL = "http://172.20.10.5:80"
 ESP32_2_URL = "http://172.20.10.6:80"
 Cam1_URL = "http://172.20.10.5:80/stream1"
 Cam2_URL = "http://172.20.10.6:80/stream2"
-GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
+GNSS_IP = "http://172.20.10.5:80/gnss"
 
-# Actual URLs
+# Actual URLs used for demo day
 #ESP32_1_URL = "192.168.4.138"
 #ESP32_2_URL = "192.168.4.108"
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
+#GNSS_IP = "http://192.168.4.138/gnss"
 
-# -----------------------------
-# TEST / LIVE MIXED MODE
-# -----------------------------
-TEST_GNSS = True               # fake GPS data
-TEST_AI_ARCHIVE = True         # use Test_Images for archive / AI proof
-USE_LIVE_CAMERA_STREAMS = False # show real ESP32 live feeds
-TEST_SKIP_AI = False            # fake AI labels from filenames
+# variable to set different elements to be tested (used in main to controll how the loop is executed) 
+TEST_GNSS = True
+TEST_AI_ARCHIVE = True
+USE_LIVE_CAMERA_STREAMS = False
+TEST_SKIP_AI = False
 
+# a list of test gnss data used to test gps pinning and feild mapping
 TEST_GPS_PATH = [
     {"lat": 50.462340, "lon": -4.038657, "valid": 1, "sats": 10, "alt": 45.2},
     {"lat": 50.462368, "lon": -4.038601, "valid": 1, "sats": 11, "alt": 45.4},
@@ -83,35 +79,46 @@ TEST_GPS_PATH = [
 ]
 
 TEST_GPS_INDEX = 0
+SD_index = 0
 
-
+# a list of folders used in various parts of the code
+TEST_FOLDER = "Test_Images"
 Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
 DATA_DIR = "data"
 
+# create the nessesary files if they dont exist
 os.makedirs(Sample_Folder, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# AI setting to change performance / accuracy
-AI_INTERVAL = 0.5
-SCALE = 0.3
-MAX_MASKS = 5
-FRAME_SKIP = 2
-
-SD_index = 0
-
-# initialize shared variables
-GNSS_New = {"lat": 0, "lon": 0, "valid": 0 , "sats": 0} # variable to get newest gnss data
+# initialize variables shared by the camera
+GNSS_New = {"lat": 0, "lon": 0, "valid": 0 , "sats": 0}
 GNSS_Lock = Lock() # mutex lock for safely updating the GNSS data variable
 
-Targets = ["Dandelion", "Thistle", "Bindweed", "Clover"] # list of detected weeds
+# list of weeds title in laymans names inorder to be used in data saving
+Targets = ["Green alkanet",
+            "Herb bennet",
+            "Couch grass",
+            "Bindweed",
+            "Japanese knotweed", 
+            "Ground elder", 
+            "Oxalis", 
+            "Lesser celandine",
+            "Enchanter's nightshade", 
+            "Cleavers", 
+            "Herb robert", 
+            "Bittercress",
+            "Creeping buttercup", 
+            "Nettles", 
+            "Creeping thistle", 
+            "Rosebay willowherb", 
+            "Common chickweed", 
+            "Horsetail",
+            "Annual meadow grass", 
+            "Docks" ]
+
 Targets_Lock = Lock() # mutex lock for safely updating targets
 
-Q_Sample = Queue(maxsize=100) # queue to manage image processing 
-
-# create the paths for the SAM2 model config and checkpoint
-SAM_Config = "sam2.1_hiera_small.yaml" 
-SAM_Check = "sam2.1_hiera_small.pt"
-
+# a list of tuples containing the scientific and common names of the weeds to be used in the AI processing
 species = [
         ("Pentaglottis sempervirens", "Green alkanet"),
         ("Geum urbanum", "Herb bennet"),
@@ -134,6 +141,8 @@ species = [
         ("Poa annua", "Annual meadow grass"),
         ("Rumex obtusifolius", "Docks")
     ]
+
+# templates used for the ai to get increased accuracy of matches by giving it multiple different phrasings to match against
 templates = [
         "a botanical photograph of {}",
         "a close-up of {} leaves",
@@ -146,94 +155,56 @@ templates = [
         "a {} plant with smooth rounded leaves"
     ]
 
+# create text inputs for the BioCLIP model by combining the plant names with the templates sentances
 CLIP_TEXTS = []
 CLIP_LABEL_MAP = []
 
-for i, (sci, common) in enumerate(species):
-    name = f"{common} ({sci})"
+# loop that puts the species names into the correct places of the sentances 
+for i, (Botanical_Name, Common_Name) in enumerate(species):
+    name = f"{Common_Name} ({Botanical_Name})"
     for t in templates:
         CLIP_TEXTS.append(t.format(name))
         CLIP_LABEL_MAP.append(i)
 
-    CLIP_SPECIES_NAMES = [common for _, common in species]
+CLIP_SPECIES_NAMES = [Common_Name for _, Common_Name in species]
 
-Latest_Frame = {"Cam1":None,"Cam2":None}
-Frame_Lock = Lock()
+Q_Sample = Queue(maxsize=100) # queue to manage image processing
 
-MODE_LOCK = Lock()
+# create the paths for the SAM2 model config and checkpoint
+SAM_Config = "sam2.1_hiera_small.yaml" 
+SAM_Check = "sam2.1_hiera_small.pt"
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+# AI settings
+MAX_MASKS = 5
+FRAME_SKIP = 2
 
-@app.route("/")
+Latest_Frame = {"Cam1":None,"Cam2":None} # a variable to store the latest frame for the webserver to access so that both the AI and website have access to the same cam
+Frame_Lock = Lock() # mutex lock for safely updating the latest frame variable
+
+
+
+app = Flask(__name__, static_folder='.', static_url_path='') # uses flask to set up the webserver 
+
+# if there is no specified root it shows the home page of the webserver
+@app.route("/") 
 def index():
     return app.send_static_file("website.html")
 
+# used to change the mode from Live to SD and vice versa
 @app.route("/set_mode", methods=["POST"])
 def set_mode():
     mode = request.json.get("mode")
 
     with MODE_LOCK:
-        MODE["type"] = mode.upper()
-
-    
-
+        MODE["type"] = mode.upper() # with use of the mutex swap the mode
     try:
-        requests.get(f"{ESP32_1_URL}/mode?mode={mode}", timeout=2)
-        requests.get(f"{ESP32_2_URL}/mode?mode={mode}", timeout=2)
-    except Exception as e:
-        print("ESP mode error:", e)
+        requests.get(f"{ESP32_1_URL}/mode?mode={mode}", timeout=2) #send mode change to esp 1 
+        requests.get(f"{ESP32_2_URL}/mode?mode={mode}", timeout=2)#send mode change to esp 2
+    except Exception as e: 
+        print("ESP mode error:", e) # if there is an error print it to terminal
    
 
-    return jsonify({"status": "ok"})
-
-@app.route("/toggle_mode", methods=["POST"])
-def toggle_mode():
-    with MODE_LOCK:
-        if MODE["type"] == "LIVE":
-            MODE["type"] = "SD"
-            new_mode = "sd"
-        else:
-            MODE["type"] = "LIVE"
-            new_mode = "stream"
-    try:
-        requests.get(f"{ESP32_1_URL}/mode?mode={new_mode}", timeout=2)
-    except Exception as e:
-        print("[ESP1 ERROR]", e)
-
-    try:
-        requests.get(f"{ESP32_2_URL}/mode?mode={new_mode}", timeout=2)
-    except:
-        pass
-
-    return jsonify(MODE)
-
-@app.route("/sync_mode")
-def sync_mode():
-    try:
-        r = requests.get(f"{ESP32_1_URL}/mode", timeout=2)
-        return r.text
-    except:
-        return "error", 500
-
-@app.route("/archive", methods=["POST"])
-def archive():
-    data = request.json
-    filename = f"detection_{datetime.now().strftime('%H-%M-%S-%f')}.json"
-    with open(os.path.join(DATA_DIR, filename), 'w') as f:
-        json.dump(data, f)
-    return "OK", 200
-
-@app.route("/api/data")
-def api_data():
-    return json.dumps(os.listdir(DATA_DIR))
-
-@app.route("/debug_frames")
-def debug_frames():
-    with Frame_Lock:
-        return jsonify({
-            "cam1_has_frame": Latest_Frame["Cam1"] is not None,
-            "cam2_has_frame": Latest_Frame["Cam2"] is not None
-        })
+    return jsonify({"status": "ok"}) # return debug info to confirm the mode change was successful
 
 @app.route("/api/upload_file", methods=['POST'])
 def upload_file():
@@ -852,11 +823,12 @@ def main():
     # -----------------------------
     # LIVE CAMERA STREAMS
     # -----------------------------
-    Cam1 = Camera_CLASS()
-    Cam2 = Camera_CLASS()
+    Cam1 = None
+    Cam2 = None
 
     if USE_LIVE_CAMERA_STREAMS:
-        print("[LIVE STREAM] Camera streams will start in background")
+        Cam1 = Camera_CLASS()
+        Cam2 = Camera_CLASS()
         Thread(target=start_camera_delayed,args=(Cam1, Cam1_URL, "Cam1", 1),daemon=True).start()
         Thread(target=start_camera_delayed,args=(Cam2, Cam2_URL, "Cam2", 2),daemon=True).start()
 
