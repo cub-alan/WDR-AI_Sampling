@@ -810,25 +810,27 @@ function switchCam(id) {
     btn1.classList.toggle('active', id === 1);
     btn2.classList.toggle('active', id === 2);
 
-    streamImg.onload = function() {
-        hideLoading();
-    };
+    // fully close previous MJPEG stream first
+    streamImg.onload = null;
+    streamImg.onerror = null;
+    streamImg.src = "about:blank";
 
-    streamImg.onerror = function() {
-        showError();
-    };
+    setTimeout(() => {
+        streamImg.onload = function() {
+            hideLoading();
+        };
 
-    if (id === 1) {
-        streamImg.src = "http://172.20.10.5:80/stream1";
-    } else {
-        streamImg.src = "http://172.20.10.6:80/stream2";
-    }
+        streamImg.onerror = function() {
+            showError();
+        };
+
+        if (id === 1) {
+            streamImg.src = "http://172.20.10.5:80/stream1?t=" + Date.now();
+        } else {
+            streamImg.src = "http://172.20.10.6:80/stream2?t=" + Date.now();
+        }
+    }, 500);
 }
-// Ensure the image hides the loader when it finally connects
-document.getElementById('stream-primary').onload = function() {
-    document.getElementById('cam-loading').classList.remove('active');
-};
-
 
 function fetchDetections() {
     fetch('/api/detections')
