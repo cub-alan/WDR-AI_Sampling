@@ -63,9 +63,6 @@ GNSS_IP = "http://172.20.10.5:80/gnss"  # URL of the GNSS data endpoint
 #Cam1_URL = "http://192.168.4.138/stream1" # URL of the first camera stream
 #Cam2_URL = "http://192.168.4.108/stream2" # URL of the second camera stream
 
-Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
-DATA_DIR = "data"
-
 # -----------------------------
 # TEST / LIVE MIXED MODE
 # -----------------------------
@@ -87,6 +84,9 @@ TEST_GPS_PATH = [
 
 TEST_GPS_INDEX = 0
 
+
+Sample_Folder = "Sample_Queue" # folder to save the images received from the camera streams and SD card for processing
+DATA_DIR = "data"
 
 os.makedirs(Sample_Folder, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -477,11 +477,10 @@ def Get_GNSS():
 def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
     results = []
+    # Use full frame directly for testing (no scaling issues)
+    h_img, w_img = frame.shape[:2]
 
-    small = cv2.resize(frame, None, fx=SCALE, fy=SCALE)
-
-    # TEMP: full-frame mask (keep for now)
-    masks = [{"bbox": [0, 0, small.shape[1], small.shape[0]]}]
+    masks = [{"bbox": [0, 0, w_img, h_img]}]
 
     print("Masks found:", len(masks))
 
@@ -494,12 +493,6 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
 
     for m in masks:
         x, y, w, h = [int(v) for v in m["bbox"]]
-
-        # scale back up
-        x = int(x / SCALE)
-        y = int(y / SCALE)
-        w = int(w / SCALE)
-        h = int(h / SCALE)
 
         if w < 20 or h < 20:
             continue

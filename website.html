@@ -429,7 +429,7 @@ h1{ /* title text styling */
     const Cam1_URL = "http://172.20.10.5:80";
     const Cam2_URL = "http://172.20.10.6:80"; 
 
-    document.getElementById("stream-primary").src = "/stream1";
+    document.getElementById("stream-primary").src = "http://172.20.10.5:80/stream1";
 
     let selectedPlants = new Set();
 
@@ -810,9 +810,9 @@ function switchCam(id) {
     btn2.classList.toggle('active', id === 2);
 
     if (id === 1) {
-    streamImg.src = "/stream1";
+    streamImg.src = "http://172.20.10.5:80/stream1";
     } else {
-    streamImg.src = "/stream2";
+    streamImg.src = "http://172.20.10.6:80/stream2";
     }
 }
 
