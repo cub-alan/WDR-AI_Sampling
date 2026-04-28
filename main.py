@@ -497,41 +497,37 @@ def Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, device, Targets):
         exp_scores = np.exp(scores) 
         probs = exp_scores / exp_scores.sum() 
 
-        best_idx = np.argmax(probs) 
-        conf = probs[best_idx]
+        best_idx = np.argmax(probs) # fin the highest probabilitys index
+        conf = probs[best_idx] # return the probability of that index
 
         print(f"[CLIP] {CLIP_SPECIES_NAMES[best_idx]} {conf:.2f}")
 
-        if conf > 0.3:
-            results.append((
-                CLIP_SPECIES_NAMES[best_idx],
-                float(conf),
-                boxes[img_idx]
-            ))
+        if conf > 0.3: # if the confidence is greater then 30 percent
+            results.append((CLIP_SPECIES_NAMES[best_idx],float(conf),boxes[img_idx])) # takes the results from the ai processing and stores them together
 
     return results, masks
 
 def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
-    files = sorted(os.listdir(Sample_Folder))
+    files = sorted(os.listdir(Sample_Folder)) # read the file in order
 
-    for file in files:
-        path = os.path.join(Sample_Folder, file)
+    for file in files: # for each file
+        path = os.path.join(Sample_Folder, file) # combine the file name and folder into a unified file path
 
-        if not file.endswith(".jpg"):
+        if not file.endswith(".jpg"): # if the file is not a jpeg skip
             continue
 
-        frame = cv2.imread(path)
-        if frame is None:
+        frame = cv2.imread(path) # create the frame 
+        if frame is None: # if no frame is received continue
             continue
 
-        with Targets_Lock:
+        with Targets_Lock: # get a copy of the targets using a mutex
             targets = Targets.copy()
 
-        detections,masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets)
+        detections,masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets) # run frame processing on the image
 
-        _, buff = cv2.imencode('.jpg', frame)
+        _, buff = cv2.imencode('.jpg', frame) # create a buffer to save the jpeg image
 
-        payload = {
+        payload = { # group all data into one payload
             "image": base64.b64encode(buff).decode(),
             "labels": f"SD: {', '.join([d[0] for d in detections])}",
             "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -540,9 +536,9 @@ def process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device):
         }
 
         try:
-            requests.post(f"{WDR_Webserver_URL}/add_detection", json=payload)
+            requests.post(f"{WDR_Webserver_URL}/add_detection", json=payload) # send the payload to the  webserver
         except:
-            pass
+            pass # if failed skip
 
         time.sleep(0.2)  # playback speed
 
@@ -550,49 +546,45 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
     print("[AI] THREAD STARTED")
 
     while True:
-        with MODE_LOCK:
+        with MODE_LOCK: # get the mode using the mutex
             mode = MODE["type"]
 
-        if mode == "SD":
-            process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device)
+        if mode == "SD": # if mode is SD
+            process_sd_card(SAM_Mask, Bio_model, Bio_processor, Device) #do AI processing on the SD card data 
             time.sleep(0.5)
-            continue
-        try:
+            continue 
+        try: #if not in SD mode
             print("[AI] Loop alive")
 
-            sample = Q_Sample.get(timeout=2)
+            sample = Q_Sample.get(timeout=2) # wait for image sample from queue
             print("[AI] Got sample")
 
-            frame = sample["frame"]
+            #extracts the frame and cam
+            frame = sample["frame"] 
             cam = sample["Cam"]
 
-            with Targets_Lock:
+            with Targets_Lock: # copy the targets using the mutex 
                 targets = Targets.copy()
 
-            if TEST_AI_ARCHIVE and TEST_SKIP_AI:
-                # fake AI detection for proving archive, images, GPS and map pins
-                h, w = frame.shape[:2]
-                label = sample.get("test_label", "Unknown")
+            if TEST_AI_ARCHIVE and TEST_SKIP_AI: # checks if test modes are set
+                h, w = frame.shape[:2] # get the hight and with of the frame 
+                label = sample.get("test_label", "Unknown") # get the test labels
 
-                detections = [
-                (label, 0.95, (int(w * 0.2), int(h * 0.2), int(w * 0.6), int(h * 0.6)))
-                ]
+                detections = [(label, 0.95, (int(w * 0.2), int(h * 0.2), int(w * 0.6), int(h * 0.6)))] #create fake detection 
 
-                masks = [{"bbox": [0, 0, w, h]}]
+                masks = [{"bbox": [0, 0, w, h]}] # get the bounds for the image box
 
                 print(f"[TEST AI] {cam}: {label}")
             else:
                 print("[AI] Running Frame_Process")
 
-                detections, masks = Frame_Process(
-                frame, SAM_Mask, Bio_model, Bio_processor, Device, targets
-                )
+                detections, masks = Frame_Process(frame, SAM_Mask, Bio_model, Bio_processor, Device, targets) # run detection on the frame
 
             print(f"[AI] Masks: {len(masks)}, Detections: {len(detections)}")
 
-            _, buff = cv2.imencode('.jpg', frame)
+            _, buff = cv2.imencode('.jpg', frame) # convert the image to jpeg
 
-            payload = {
+            payload = { # create a payload of all data
             "image": base64.b64encode(buff).decode(),
             "plants": [
             {
@@ -609,48 +601,44 @@ def AI_Loop(SAM_Mask, Bio_model, Bio_processor, Device):
             }
 
             try:
-                r = requests.post(
-                f"{WDR_Webserver_URL}/add_detection",
-                json=payload,
-                timeout=2
-                )
+                r = requests.post(f"{WDR_Webserver_URL}/add_detection",json=payload,timeout=2) # send the payload to the webserver
                 print("[ARCHIVE POST]", r.status_code, r.text)
-            except Exception as e:
+            except Exception as e: # if there is an error print debug info
                 print("[ARCHIVE POST ERROR]", e)
 
-        except Exception as e:
+        except Exception as e: # if there is an error print debug info
             print("[AI ERROR]", e)
 
 detections_store = []
 @app.route("/get_mode")
 def get_mode():
-    return jsonify(MODE)
+    return jsonify(MODE) # get the current mode
 
 @app.route("/add_detection", methods=["POST"])
 def add_detection():
-    data = request.json
+    data = request.json # read the payload sent by request
 
-    detections_store.append(data)
-    if len(detections_store) > 200:
+    detections_store.append(data) ## store the data in detection store
+    if len(detections_store) > 200: # if the store is greater then 200 remove the oldest
         detections_store.pop(0)
 
-    filename = f"detection_{datetime.now().strftime('%H-%M-%S-%f')}.json"
-    path = os.path.join(DATA_DIR, filename)
+    filename = f"detection_{datetime.now().strftime('%H-%M-%S-%f')}.json" # create a time stamp for the file name
+    path = os.path.join(DATA_DIR, filename) #save into the folder 
 
-    tmp_path = path + ".tmp"
+    tmp_path = path + ".tmp" # create a temporary file path
 
-    # write safely first
+    # create the temporary file for safety
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
 
-    # then replace
+    # replace the temporary file with a perminant one
     os.replace(tmp_path, path)
 
     return "OK", 200
 
 @app.route("/api/detections")
 def get_detections():
-    files = sorted(
+    files = sorted( # lists every file in the DATA_DIR
         [f for f in os.listdir(DATA_DIR) if f.endswith(".json")]
     )
 
@@ -658,26 +646,27 @@ def get_detections():
 
     detections = []
 
-    for file in files[-50:]:
-        path = os.path.join(DATA_DIR, file)
+    for file in files[-50:]: # for the most recent 50 files in file
+        path = os.path.join(DATA_DIR, file) # open the file
         try:
             with open(path, "r") as f:
-                detections.append(json.load(f))
-        except Exception as e:
+                detections.append(json.load(f)) # convert the json 
+        except Exception as e: # if there is an error print debug for it
             print("[READ ERROR]", file, e)
 
     return jsonify(detections)
 
 def Ensure_Test_Images(folder_path):
-    os.makedirs(folder_path, exist_ok=True)
+    os.makedirs(folder_path, exist_ok=True) # create the folder if it doesnt exist
 
+    # check for existing images in the file folder
     existing = [f for f in os.listdir(folder_path) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-    if existing:
+    if existing: # if existing then return
         return
 
     print("[TEST IMAGE] No test images found, creating simple sample images")
 
-    samples = [
+    samples = [ # define the test samples
         ("Cam1_Dandelion_test.jpg", "Dandelion", (80, 180, 80)),
         ("Cam2_Nettles_test.jpg", "Nettles", (60, 160, 60)),
         ("Cam1_Bindweed_test.jpg", "Bindweed", (70, 170, 70)),
@@ -685,11 +674,14 @@ def Ensure_Test_Images(folder_path):
     ]
 
     for filename, label, colour in samples:
-        img = np.zeros((480, 640, 3), dtype=np.uint8)
-        img[:] = (35, 110, 35)
+        img = np.zeros((480, 640, 3), dtype=np.uint8) # create image
+        img[:] = (35, 110, 35)  # set image back ground to "grass"
+
+        # create shapes to simulate a plant
         cv2.circle(img, (320, 240), 110, colour, -1)
         cv2.circle(img, (250, 210), 55, (45, 140, 45), -1)
         cv2.circle(img, (390, 210), 55, (45, 140, 45), -1)
+        # add label text
         cv2.putText(img, label, (65, 430), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3)
         cv2.imwrite(str(Path(folder_path) / filename), img)
 
@@ -697,23 +689,24 @@ def Ensure_Test_Images(folder_path):
 def next_test_gnss():
     global TEST_GPS_INDEX, GNSS_New
 
-    point = TEST_GPS_PATH[TEST_GPS_INDEX % len(TEST_GPS_PATH)].copy()
-    TEST_GPS_INDEX += 1
+    point = TEST_GPS_PATH[TEST_GPS_INDEX % len(TEST_GPS_PATH)].copy() # get a copy of the gnss data at that index point
+    TEST_GPS_INDEX += 1 # add one to the index
 
-    with GNSS_Lock:
+    with GNSS_Lock: # with mutex update the gnss value
         GNSS_New.update(point)
 
     return point
 
 def Test_GNSS_Loop():
     while True:
-        point = next_test_gnss()
+        point = next_test_gnss() # go to next index in the gnss test vector
         print(f"[TEST GNSS] lat={point['lat']} lon={point['lon']} sats={point['sats']}")
         time.sleep(1)
 
 def guess_test_label(filename):
-    name = filename.lower().replace("_", " ").replace("-", " ")
+    name = filename.lower().replace("_", " ").replace("-", " ") # replace unwated symbols with spaces
 
+    # set up so shortened or all lower case name swap back to the correct one for the guessing
     if "dandelion" in name:
         return "Dandelion"
     if "nettle" in name:
@@ -727,14 +720,14 @@ def guess_test_label(filename):
     if "couch" in name:
         return "Couch grass"
 
-    return "Unknown"
+    return "Unknown" # if not one in the list return unkown
 
 
 def Feed_Folder_To_Queue(folder_path, loop=True):
-    Ensure_Test_Images(folder_path)
+    Ensure_Test_Images(folder_path) # creates the folder if it doesnt exist already
 
-    folder = Path(folder_path)
-    files = sorted([
+    folder = Path(folder_path) # get the folder path
+    files = sorted([ # only get images that are of the correct format
         f for f in folder.iterdir()
         if f.suffix.lower() in [".jpg", ".jpeg", ".png"]
     ])
@@ -742,27 +735,27 @@ def Feed_Folder_To_Queue(folder_path, loop=True):
     print(f"[TEST FEED] Looking in: {folder.resolve()}")
     print(f"[TEST FEED] Files found: {[f.name for f in files]}")
 
-    if not files:
+    if not files: # if there are no files return
         print("[TEST FEED ERROR] No test images found")
         return
 
     while True:
-        for path in files:
-            frame = cv2.imread(str(path))
+        for path in files: #for every file
+            frame = cv2.imread(str(path)) # get the frame using open cv
 
-            if frame is None:
+            if frame is None: # if there is no frame continue 
                 print(f"[TEST FEED ERROR] Could not read image: {path}")
                 continue
 
-            cam_name = "Cam2" if "cam2" in path.name.lower() else "Cam1"
+            cam_name = "Cam2" if "cam2" in path.name.lower() else "Cam1" # label if cam1 or 2
 
-            if TEST_GNSS:
-                gnss = next_test_gnss()
+            if TEST_GNSS: # if gnss test is on 
+                gnss = next_test_gnss() # get the next test gnss data
             else:
-                with GNSS_Lock:
+                with GNSS_Lock: # with a mutex get a copy of the current GNSS value
                     gnss = GNSS_New.copy()
 
-            sample = {
+            sample = { # create a sample holding all data 
                 "frame": frame,
                 "GNSS": gnss,
                 "Cam": cam_name,
@@ -772,65 +765,75 @@ def Feed_Folder_To_Queue(folder_path, loop=True):
             }
 
             try:
-                Q_Sample.put_nowait(sample)
+                Q_Sample.put_nowait(sample) # put the sample into the queue
                 print(
                     f"[TEST QUEUE] SENT {path.name} "
                     f"label={sample['test_label']} "
                     f"lat={gnss['lat']} lon={gnss['lon']}"
                 )
-            except Full:
+            except Full: # if the queue is full print warning
                 print("[TEST QUEUE ERROR] Queue full")
 
             time.sleep(1)
 
-        if not loop:
+        if not loop: # if no more files break
             break
 
 def start_camera_delayed(cam, url, name, delay):
-    time.sleep(delay)
+    time.sleep(delay) # delay by the variable put into the function
     print(f"[LIVE STREAM] Starting {name}")
-    cam.Init(url, name)
+    cam.Init(url, name) # init the camera 
 
 def main():
-    zeroconf = register_mdns(PORT)
+    zeroconf = register_mdns(PORT) # regester the port for all webserver functions to run from
 
+    #start the webserver thread
     Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, threaded=True), daemon=True).start()
 
+    #initialise cam variables
     Cam1 = None
     Cam2 = None
 
-    if USE_LIVE_CAMERA_STREAMS:
+    if USE_LIVE_CAMERA_STREAMS: # if using live streams
+        # set the cams
         Cam1 = Camera_CLASS()
         Cam2 = Camera_CLASS()
+        #start the cam thread
         Thread(target=start_camera_delayed,args=(Cam1, Cam1_URL, "Cam1", 1),daemon=True).start()
         Thread(target=start_camera_delayed,args=(Cam2, Cam2_URL, "Cam2", 2),daemon=True).start()
 
-    if TEST_GNSS:
+    if TEST_GNSS: # if using test gnss data
         print("[TEST GNSS] Using fake GPS path")
+        # start the gnss test thread
         Thread(target=Test_GNSS_Loop, daemon=True).start()
     else:
         print("[LIVE GNSS] Reading real GNSS from ESP32")
+        #start real gnss thread
         Thread(target=Get_GNSS, daemon=True).start()
 
-    if TEST_SKIP_AI:
-        SAM_Mask, Bio_model, Bio_processor, Device = None, None, None, "cpu"
+    if TEST_SKIP_AI: # if faking ai outputs
+        # dont init sam and bioclip
+        SAM_Mask, Bio_model, Bio_processor, Device = None, None, None, "cpu" 
     else:
+        # init sam and bioclip
         SAM_Mask, Bio_model, Bio_processor, Device = Init_Libs()
-
+    #start the ai loop thread
     Thread(target=AI_Loop,args=(SAM_Mask, Bio_model, Bio_processor, Device),daemon=True).start()
 
-    if TEST_AI_ARCHIVE:
+    if TEST_AI_ARCHIVE: # is test archeive is on
         print("[TEST AI/ARCHIVE] Feeding Test_Images into archive")
+        # start feeding test data to queue thread
         Thread(target=Feed_Folder_To_Queue, args=(TEST_FOLDER,), daemon=True).start()
     else:
         print("[LIVE AI] Sampling real camera frames")
+        # start feeding real data thread
         Thread(target=Sample_Process, args=(Cam1, Cam2), daemon=True).start()
 
     try:
         while True:
             time.sleep(1)
 
-    except KeyboardInterrupt:
+    except KeyboardInterrupt: # if ctrl + c is press in terminal shut down
         print("\nShutting down...")
         zeroconf.unregister_all_services()
         zeroconf.close()
