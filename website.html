@@ -8,29 +8,31 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script> <!-- Leaflet Map Library used for field mapping -->
 
-<style> /* CSS styling for the webpage */
+<style> 
+
+/* the following is visualisation settings for differnt elements of the webserver */
 
 body{ /* style function for the whole page */
-    font-family: "Times New Roman", Times, serif; /* all fonts on the page in rimes new roman */
-    background: #7bcae0; /* background color of the page */
-    color: #000000; /* default text color */
-    margin: 0; /* removes default margin */
-    display: flex; /* enables flexbox layout */
-    flex-direction: column; /* boxes created are stacked vertically */
-    align-items: center; /* centers the boxes on the page */
+    font-family: "Times New Roman", Times, serif;
+    background: #7bcae0;
+    color: #000000; 
+    margin: 0; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
 }
 
 .container{ /* creates the camera container box */
-    width: 100%; /* makes the box take up the full width of the page */
-    max-width: 640px; /* limits the width of the box to 640px to keep it in a 4:3 aspect ratio */
+    width: 100%; 
+    max-width: 640px; 
     padding: 20px; 
     box-sizing: border-box;
 }
 
 .header{ /* header box that has the title */
-    display: flex; /* enables flexbox layout */
-    justify-content: space-between; /* ensures the boxes are either side of the header */
-    align-items: center; /* centers the boxes vertically within the header */
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
     margin-bottom: 20px; 
     border-bottom: 1px solid #333;
     padding-bottom: 10px;
@@ -40,18 +42,18 @@ h1{ /* title text styling */
     font-size: 24px;
     margin: 0;
     color: #000000;
-    text-transform: uppercase; /* makes all text uppercase */
-    letter-spacing: 2px; /* adds 2 pixel spacing between each letter*/
+    text-transform: uppercase; 
+    letter-spacing: 2px; 
 }
 
-.navbar { /* navigation bar for the 4 pages */
+.navbar { /* navigation bar for the 3 pages */
     display: flex;
-    gap: 4px; /* adds 4 pixels of space between each button */
-    margin-bottom: 20px; /* adds 20 pixels of space below the navbar */
+    gap: 4px; 
+    margin-bottom: 20px;
 }
 
-.nav-btn { /* style for the navbar buttons */
-    flex: 1; /* makes each button take up an equal amount of space */
+.nav-btn { /* style for the buttons made for nav bar but also used elsewhere*/
+    flex: 1; 
     padding: 10px; 
     background: #000000;
     color: #666666;
@@ -59,25 +61,25 @@ h1{ /* title text styling */
     font-size: 11px;
     font-weight: bold;
     text-transform: uppercase;
-    cursor: pointer; /* changes the cursor to a pointer when hovering over one of the buttons*/
+    cursor: pointer;
     border-radius: 8px;
-    transition: all 0.2s; /* adds a transition effect to the button */
+    transition: all 0.2s; 
 }
 
-.nav-btn.active {
+.nav-btn.active { /*what the nav buttons look when active*/
     background: #151619;
     color: #fff;
     border-bottom: 2px solid #079AF0;
 }
 
-.cam-tabs {
+.cam-tabs { /*the button layout for the cam1/2 and SD mode buttons*/
     display: flex;
     width: 100%;
     gap: 2px;
     margin-bottom: 4px;
 }
 
-.cam-btn {
+.cam-btn { /*cam buttons visuals*/
     flex: 1;
     padding: 10px;
     background: #000;
@@ -91,13 +93,13 @@ h1{ /* title text styling */
     transition: all 0.2s;
 }
 
-.cam-btn.active {
+.cam-btn.active { /*cam button active visuals*/
     background: #151619;
     color: #fff;
     border-bottom: 2px solid #079AF0;
 }
 
-.stream-box {
+.stream-box { /*camera stream box visuals*/
     background: #000;
     border-radius: 12px 12px 0 0;
     overflow: hidden;
@@ -107,18 +109,18 @@ h1{ /* title text styling */
     aspect-ratio: 4/3;
 }
 
-.stream-box img {
+.stream-box img { /*stream image sizing*/
     width: 100%;
     height: 100%;
     object-fit: contain;
     display: none;
 }
 
-.stream-box img.active {
+.stream-box img.active {/*display blocking when image is active*/
     display: block;
 }
 
-.loading-overlay {
+.loading-overlay { /*connecting to cam visuals*/
     position: absolute;
     top: 0;
     left: 0;
@@ -141,7 +143,7 @@ h1{ /* title text styling */
     display: flex;
 }
 
-.stream-label {
+.stream-label {  /*cam visuals*/
     position: absolute;
     bottom: 10px;
     right: 10px;
@@ -155,7 +157,7 @@ h1{ /* title text styling */
     pointer-events: none;
 }
 
-#map {
+#map { /*feild map visuals*/
     width: 100%;
     height: 300px;
     margin-top: 20px;
@@ -163,14 +165,14 @@ h1{ /* title text styling */
     border: 1px solid #222;
 }
 
-.data-grid {
+.data-grid { /*gnss data boxes*/
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-top: 20px;
 }
 
-.data-card {
+.data-card { /*gnss data box visuals*/
     background: #000000;
     padding: 15px;
     border-radius: 10px;
@@ -178,11 +180,11 @@ h1{ /* title text styling */
     transition: border-color 0.3s;
 }
 
-.data-card:first-child {
+.data-card:first-child { /*the longer status lock box*/
     grid-column: span 2;
 }
 
-.label {
+.label { /*gnss labels*/
     font-size: 10px;
     color: #666;
     text-transform: uppercase;
@@ -190,14 +192,14 @@ h1{ /* title text styling */
     margin-bottom: 6px;
 }
 
-.value {
+.value { /*gnss value visuals*/
     font-size: 16px;
     font-weight: 600;
     font-family: "JetBrains Mono", monospace;
     color: #fff;
 }
 
-.status-dot {
+.status-dot { /*connecting dots*/
     display: inline-block;
     width: 8px;
     height: 8px;
@@ -205,23 +207,23 @@ h1{ /* title text styling */
     margin-right: 8px;
 }
 
-@keyframes dots {
+@keyframes dots { /*create the conecting dots animation*/
     0%,32% {content: '.';}
     33%,65% {content: '..';}
     66%,100% {content: '...';}
 }
 
-.dots::after {
+.dots::after { /*create connecting dots timing*/
     content: '.';
     animation: dots 1.5s infinite steps(1);
 }
 
-.plant-list {
+.plant-list { /*create filters layout*/
     width: 100%;
     margin-top: 10px;
 }
 
-.plant-item {
+.plant-item { /*create filters items*/
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -235,17 +237,17 @@ h1{ /* title text styling */
     user-select: none;
 }
 
-.plant-item span:first-child {
+.plant-item span:first-child { /*set the first box width*/
     flex: 1;
 }
 
-.plant-status {
+.plant-status { /*create the check box for the filters*/
     font-size: 12px;
     color: #888;
     margin-left: 10px;
 }
 
-.archive-container {
+.archive-container { /*create the layout for the archeive*/
     max-height: 400px;
     overflow-y: auto;
     display: flex;
@@ -256,10 +258,10 @@ h1{ /* title text styling */
     border-radius: 10px;
     background: #fff;
 }
-.archive-container::-webkit-scrollbar {
+.archive-container::-webkit-scrollbar { /*create the scroll bar for the archeive*/
     width: 6px;
 }
-.archive-container::-webkit-scrollbar-thumb {
+.archive-container::-webkit-scrollbar-thumb { /*set the scroll bar visuals*/
     background: #000000;
     border-radius: 3px;
 }
@@ -269,13 +271,14 @@ h1{ /* title text styling */
 
 
 
-<body> <!-- anything in body is visible content -->
+<body> 
+    <!-- all of this is actually creating a functional page -->
 <div class="container">
     <div class="header">
-        <h1>Weed Detection Robot</h1>
+        <h1>Weed Detection Robot</h1> <!--the title for whole page-->
         <div id="clock" style="font-size:12px;color:#666;">ONLINE</div>
     </div>
-    <div class="navbar">
+    <div class="navbar"> <!--create the buttons to be able to swap between the 3 pages-->
         <button id="nav1" class="nav-btn active" onclick="showPage(1)">Live</button>
         <button id="nav2" class="nav-btn" onclick="showPage(2)">Map</button>
         <button id="nav3" class="nav-btn" onclick="showPage(3)">Archive</button>
@@ -283,29 +286,27 @@ h1{ /* title text styling */
 
     <div id="page1">
 
-        <div class="stream-box">
+        <div class="stream-box"> <!--set up the camera stream box starting on cam 1 and hide the connecting animation-->
             <div id="cam-loading" class="loading-overlay">Connecting<span class="dots"></span></div>
 
-            <img src="" id="stream-primary" class="active"
+            <img src="" id="stream-primary" class="active" 
             referrerpolicy="no-referrer"
             onload="hideLoading()" onerror="showError()">
 
             <div id="active-label" class="stream-label" style="display:none">Primary Feed</div>
 
         </div>
-        <div class="cam-tabs" style="margin-top:8px;">
+        <div class="cam-tabs" style="margin-top:8px;"> <!--create the buttons to switch cam veiw and SD mode-->
             <button id="btn-cam1" class="cam-btn active" onclick="switchCam(1)">Cam 1</button>
             <button id="btn-cam2" class="cam-btn" onclick="switchCam(2)">Cam 2</button>
 
-            <!-- spacer -->
             <div style="flex:1;"></div>
 
             <button id="btn-sd" class="cam-btn" onclick="alert('SD disabled during stream testing')">SD</button>
 
         </div>
 
-        <!-- MAP and field mapping button removed from Live page -->
-        <div class="data-grid">
+        <div class="data-grid"> <!--create the gnss data grid showing each of the relevent bits of data-->
             <div class="data-card">
                 <div class="label">GNSS Status</div>
                 <div class="value" id="gps-status">
@@ -331,36 +332,35 @@ h1{ /* title text styling */
         </div>
     </div>
 
-    <div id="page2" style="display:none;">
+    <div id="page2" style="display:none;"> <!--page two showing the feild mapping-->
         <h2>Map</h2>
         <div id="map"></div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
+        <div style="display:flex; gap:8px; margin-top:10px;"> <!--create the two buttons to create and clear the feild map--> 
             <button id="fieldBtn" class="cam-btn" style="flex:1; border-radius:8px;" onclick="toggleField()">Start Field Map</button>
             <button id="clearFieldBtn" class="cam-btn" style="flex:1; border-radius:8px;" onclick="clearFieldMap()">Clear Field Map</button>
         </div>    
     </div>
-   <div id="page3" style="display:none;">
+
+   <div id="page3" style="display:none;"> <!--page 3 creating the archeive of data-->
 
     <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Archive</h2>
 
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px;"> <!--sort the shown files based on the filters-->
             <button id="filterBtn" class="cam-btn" onclick="toggleFilters()">Filters</button>
         </div>
     </div>
 
-    <!-- NORMAL ARCHIVE VIEW -->
-    <div id="archive-view">
+    <div id="archive-view"> <!-- create the scrolling container for the archeive-->
         <div id="archive-list" class="archive-container"></div>
     </div>
 
-    <!-- FILTER VIEW -->
-    <div id="filter-view" style="display:none;">
+    <div id="filter-view" style="display:none;"> <!--create the filters page accessable from the page 3 filters button-->
         <button class="cam-btn" onclick="toggleFilters()">← Back</button>
 
         <h3 style="color:white;">Filters</h3>
 
-        <div id="plant-list" class="plant-list">
+        <div id="plant-list" class="plant-list"> <!-- create the list of plant on the filters page with their toggleable tick box-->
 
             <div class="plant-item" onclick="togglePlantItem(this)">
                 <span>Nettles</span>
@@ -405,8 +405,7 @@ h1{ /* title text styling */
         </div>
     </div>
 
-    <!-- DETAIL VIEW (MUST BE OUTSIDE FILTER VIEW) -->
-    <div id="page3-detail" style="display:none;">
+    <div id="page3-detail" style="display:none;"> <!--create the file page to show all data connected to that timestamp-->
         <button class="cam-btn" onclick="backToArchive()">← Back</button>
         <h2>Detection Details</h2>
         <div id="detail-content" style="color:rgb(0, 0, 0);"></div>
@@ -946,12 +945,12 @@ h1{ /* title text styling */
         `;
     }
 
-    function backToArchive() {
+    function backToArchive() { // create a back button to return to the archeive 
         document.getElementById('page3-detail').style.display = 'none';
         document.getElementById('archive-view').style.display = 'block';
     }
 
-    setInterval(() => {
+    setInterval(() => { // create a delay between each pin on the map
         if (map && document.getElementById('page2').style.display === 'block') {
             updateWeedPins();
         }
