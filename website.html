@@ -241,12 +241,6 @@ h1{ /* title text styling */
     flex: 1;
 }
 
-.plant-status { /*create the check box for the filters*/
-    font-size: 12px;
-    color: #888;
-    margin-left: 10px;
-}
-
 .archive-container { /*create the layout for the archeive*/
     max-height: 400px;
     overflow-y: auto;
@@ -276,7 +270,6 @@ h1{ /* title text styling */
 <div class="container">
     <div class="header">
         <h1>Weed Detection Robot</h1> <!--the title for whole page-->
-        <div id="clock" style="font-size:12px;color:#666;">ONLINE</div>
     </div>
     <div class="navbar"> <!--create the buttons to be able to swap between the 3 pages-->
         <button id="nav1" class="nav-btn active" onclick="showPage(1)">Live</button>
@@ -418,11 +411,12 @@ h1{ /* title text styling */
 
 <script>
 
-    window.onload = () => {fetchArchive();switchCam(1);};
+    window.onload = () => {fetchArchive();switchCam(1);}; // once the page is loaded automatically try to get the cam1 feed
 
-    let selectedPlants = new Set();
+    let selectedPlants = new Set(); // create a variable to get ticked plants from the filters page 
 
-    const REMOVAL_METHODS = {
+    // create a lit of removal methods for each tyype of plant
+    const REMOVAL_METHODS = { 
         "Nettles": "Hoe, fork young or established plants, deadhead, smother or strimming ",
         "Creeping thistle": "Cut repeatedly or apply herbicide to prevent spread.",
         "Bindweed": "Smother plants to remove light. Fork out seedlings as soon as possible and remove all of the root. Insert a physical barrier. ",
@@ -435,75 +429,75 @@ h1{ /* title text styling */
         "Oxalises": "Dead head, hooe or fork out plants, rake or smother. ",
     };
 
+    // create variables for the field mapping state 
     var map = null;
     var marker = null;
     var weedMarkers = [];
-
-    // field mapping state
     let fieldTracking = false;
     let fieldCoords = [];
     let fieldPolygon = null;
 
     function updateModeUI(mode) {
+        // read the values for each of the buttons 
         const btn = document.getElementById('btn-sd');
-        const streamBox = document.querySelector('.stream-box');
-
         const cam1 = document.getElementById('btn-cam1');
         const cam2 = document.getElementById('btn-cam2');
 
-        let overlay = document.getElementById('sd-overlay');
+        const streamBox = document.querySelector('.stream-box'); // set up the stream box
 
-    // create overlay if not exists
+        let overlay = document.getElementById('sd-overlay'); // set up the SD card mode visual
+
+        // create the overlay if it does not exists yet with the set visual elements
         if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'sd-overlay';
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.background = '#000';
-        overlay.style.color = '#fff';
-        overlay.style.display = 'flex';
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
-        overlay.style.fontSize = '20px';
-        overlay.style.fontWeight = 'bold';
-        overlay.style.letterSpacing = '2px';
-        overlay.style.zIndex = '10';
-        overlay.style.pointerEvents = 'none';
-        overlay.innerText = 'IN SD MODE';
+            overlay = document.createElement('div');
+            overlay.id = 'sd-overlay';
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.background = '#000';
+            overlay.style.color = '#fff';
+            overlay.style.display = 'flex';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.fontSize = '20px';
+            overlay.style.fontWeight = 'bold';
+            overlay.style.letterSpacing = '2px';
+            overlay.style.zIndex = '10';
+            overlay.style.pointerEvents = 'none';
+            overlay.innerText = 'IN SD MODE';
 
-        streamBox.appendChild(overlay);
+            streamBox.appendChild(overlay);
         }
 
-        if (mode === "SD") {
-        btn.classList.add('active');
-        overlay.style.display = 'flex';
-        cam1.classList.remove('active');
-        cam2.classList.remove('active');
-        cam1.style.opacity = "0.2";
-        cam2.style.opacity = "0.2";
-
+        if (mode === "SD") { // if in SD mode set the overlay to stop the cam buttons being clickable
+            btn.classList.add('active');
+            overlay.style.display = 'flex';
+            cam1.classList.remove('active');
+            cam2.classList.remove('active');
+            cam1.style.opacity = "0.2";
+            cam2.style.opacity = "0.2";
         } 
-        else {
-        btn.classList.remove('active');
-        overlay.style.display = 'none';
-        cam1.style.opacity = "1";
-        cam2.style.opacity = "1";
+        else { // if not in SD mode cam buttons are clickable
+            btn.classList.remove('active');
+            overlay.style.display = 'none';
+            cam1.style.opacity = "1";
+            cam2.style.opacity = "1";
         }
     }
 
-    function updateMode() {
+    function updateMode() { // create a function to update the mode under the correct website header for the esp to read from
         fetch('/get_mode')
         .then(res => res.json())
         .then(data => {
             updateModeUI(data.type);
         });
     }
-    function setSDMode() {
-        console.log("SD BUTTON CLICKED");
+    function setSDMode() { 
+        console.log("SD BUTTON CLICKED"); 
 
+        // set the mode to SD and return any debug info got from the mode change
         fetch("/set_mode", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -518,6 +512,7 @@ h1{ /* title text styling */
     }
 
     function setStreamMode() {
+        // set the mode to STREAM and return any debug info got from the mode change
         fetch("/set_mode", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -528,74 +523,71 @@ h1{ /* title text styling */
         });
     }
 
-    function updateMode() {
-        fetch('/get_mode')
-        .then(res => res.json())
-        .then(data => {
-            updateModeUI(data.type);
-        });
-    }
-
-    setInterval(updateMode, 3000);
+    setInterval(updateMode, 3000); // a delay of 3 seconds before update mode can be done again to allow for the esp to retreive the mode correctly
 
     function toggleFilters() {
+        // create variables for the filter/archeive display
         const filterView = document.getElementById('filter-view');
         const archiveView = document.getElementById('archive-view');
 
-        const isOpen = filterView.style.display === 'block';
+        const isOpen = filterView.style.display === 'block'; 
 
-        if (isOpen) {
-            // CLOSE
+        if (isOpen) { // if archeive is open stop filter display and get the archeive list
             filterView.style.display = 'none';
             archiveView.style.display = 'block';
             fetchArchive();
         } 
-        else {
-            // OPEN
+        else { // open filters and hide the archeive
             archiveView.style.display = 'none';
             filterView.style.display = 'block';
         }
     }
 
-    // util for loader overlay
-    function showLoading(msg = 'Connecting') {
+    function showLoading(msg = 'Connecting') { // if the camera isnt connected show the conecting animation with the three dots
         const loading = document.getElementById('cam-loading');
         loading.innerHTML = msg + '<span class="dots"></span>';
         loading.classList.add('active');
     }
+
     function showPage(id) {
+
+        // create checks to see what page details
         document.getElementById('page1').style.display = id === 1 ? 'block' : 'none';
         document.getElementById('page2').style.display = id === 2 ? 'block' : 'none';
         document.getElementById('page3').style.display = id === 3 ? 'block' : 'none';
 
+
+        // check which id is active
         document.getElementById('nav1').classList.toggle('active', id === 1);
         document.getElementById('nav2').classList.toggle('active', id === 2);
         document.getElementById('nav3').classList.toggle('active', id === 3);
 
-        if (id === 3) {
+        if (id === 3) { // if page 3 is active hide all other pages and show the archeive page
             document.getElementById('archive-view').style.display = 'block';
             document.getElementById('filter-view').style.display = 'none';
             document.getElementById('page3-detail').style.display = 'none';
             fetchArchive();
         }
 
-        if (id === 2) {
+        if (id === 2) { // if page 2 is active
         setTimeout(() => {
-            if (!map) {
-                map = L.map('map').setView([0,0], 18);
-
+            if (!map) { // if map does not yet exist create a map using leaflet
+                map = L.map('map').setView([0,0], 18); 
+                
+                // open the map with set starting zoom with x,y,z position fead in
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19
                 }).addTo(map);
 
-                // robot / live GPS marker
-                marker = L.marker([0,0]).addTo(map);
+                // initialises a marker at 0 0 to be able to update to current possition later and center it
+                marker = L.marker([0,0]).addTo(map); 
                 marker.bindPopup("Robot current position");
             }
 
-            map.invalidateSize();
+            // calculate size and draw the map
+            map.invalidateSize(); 
 
-            // load weed detection pins
+            // load weed detection pins onto the map
             updateWeedPins();
 
         }, 100);
@@ -603,15 +595,16 @@ h1{ /* title text styling */
     }
 
     function togglePlantItem(item) {
+        // create plant name and check box
         const checkbox = item.querySelector('input[type="checkbox"]');
         const plantName = item.querySelector('span').innerText;
 
-        checkbox.checked = !checkbox.checked;
+        checkbox.checked = !checkbox.checked; // if check box pressed swap mode
 
-        if (checkbox.checked) {
+        if (checkbox.checked) { // if checked add the plant into the list of plants being searched for
             selectedPlants.add(plantName);
             item.style.borderColor = "#4caf50";
-        } else {
+        } else { // if not checked remove the plant from the list
             selectedPlants.delete(plantName);
             item.style.borderColor = "#222";
         }
@@ -620,134 +613,133 @@ h1{ /* title text styling */
     }
 
     function toggleField() {
-        fieldTracking = !fieldTracking;
+        fieldTracking = !fieldTracking; // if feild tracking is pressed swap modes 
 
-        document.getElementById('fieldBtn').innerText = fieldTracking
+        document.getElementById('fieldBtn').innerText = fieldTracking // either have feild button text as start or stop mapping
             ? 'Stop Field Map'
             : 'Start Field Map';
     }
 
     function clearFieldMap() {
-        fieldTracking = false;
-        fieldCoords = [];
+        fieldTracking = false; // stopp feild tracking
+        fieldCoords = []; 
 
-        if (fieldPolygon) {
+        if (fieldPolygon) { // if a map has been drawn remove it and make the map coordinates empty
             map.removeLayer(fieldPolygon);
             fieldPolygon = null;
         }
 
-        document.getElementById('fieldBtn').innerText = 'Start Field Map';
+        document.getElementById('fieldBtn').innerText = 'Start Field Map'; // force feild map button to start 
     }
 
     function hideLoading() {
-        document.getElementById('cam-loading').classList.remove('active');
+        document.getElementById('cam-loading').classList.remove('active'); // if cam shown hide connecting animation
     }
 
     function showError() {
-        const loading = document.getElementById('cam-loading');
-        const btn2 = document.getElementById('btn-cam2');
-        if (btn2.classList.contains('active')) {
+
+        const loading = document.getElementById('cam-loading'); // 
+        const btn2 = document.getElementById('btn-cam2'); // check if cam 2 is selected
+
+        if (btn2.classList.contains('active')) { // if cam 2 but not displaying show connection fail
             loading.innerHTML = 'Connection Failed';
         } 
         else {
-            // primary camera error – show connecting animation instead
-            loading.innerHTML = 'Connecting<span class="dots"></span>';
+            loading.innerHTML = 'Connecting<span class="dots"></span>'; // show connecting on cam 1
         }
-        loading.classList.add('active');
+        loading.classList.add('active'); // show the messages on the stream box
     }
 
     function switchCam(id) {
+        
+        // set up primary stream with connecting animation
         const streamImg = document.getElementById('stream-primary');
         const loading = document.getElementById('cam-loading');
+
+        // check if cam buttons is pressed
         const btn1 = document.getElementById('btn-cam1');
         const btn2 = document.getElementById('btn-cam2');
 
-        const isSD = document.getElementById('btn-sd').classList.contains('active');
+        const isSD = document.getElementById('btn-sd').classList.contains('active'); // check if SD button is pressed
 
-        if (isSD) {
+        if (isSD) { // if in SD mode dont allow for cam buttons to be pressed
             btn1.classList.remove('active');
             btn2.classList.remove('active');
-            return;
+            return; // skip the rest 
         }
 
+        // activate the loading animation
         loading.classList.add('active');
-
-        btn1.classList.toggle('active', id === 1);
+        // activate the buttons
+        btn1.classList.toggle('active', id === 1); 
         btn2.classList.toggle('active', id === 2);
 
-        // fully close previous MJPEG stream first
+        // fully close previous MJPEG stream before a new one can open
         streamImg.onload = null;
         streamImg.onerror = null;
         streamImg.src = "about:blank";
 
         setTimeout(() => {
-            streamImg.onload = function() {
+            streamImg.onload = function() { // if image shows hide loading animation
                 hideLoading();
             };
 
-            streamImg.onerror = function() {
+            streamImg.onerror = function() { // if theres an error show connection error on display box
                 showError();
             };
 
-            if (id === 1) {
+            if (id === 1) { // if button one is pressed activate the current stream 1 
                 streamImg.src = "http://172.20.10.5:80/stream1?t=" + Date.now();
-            } else {
+            } else { // if button 2 is pressed activate the current stream 2
                 streamImg.src = "http://172.20.10.6:80/stream2?t=" + Date.now();
             }
         }, 500);
     }
 
-    function fetchDetections() {
-        fetch('/api/detections')
-        .then(r => r.json())
-        .then(data => {
-            console.log(data); // or display it
-        });
-    }
-    //setInterval(fetchDetections, 1000);
-
     function updateStatus() {
-        fetch('/status')
+        fetch('/status') // get the gnss stream from /status
         .then(response => response.json())
         .then(data => {
-            if (data.valid) {
-                document.getElementById('gps-status').innerHTML ='<span class="status-dot status-locked"></span>Locked';
-                const latDir = data.lat >= 0 ? 'N' : 'S';
-                const lonDir = data.lon >= 0 ? 'E' : 'W';
-                document.getElementById('coords').innerText = Math.abs(data.lat).toFixed(6) + ' ' + latDir + ', ' + Math.abs(data.lon).toFixed(6) + ' ' + lonDir;
-
+            if (data.valid) { // if the data is valid
+                document.getElementById('gps-status').innerHTML ='<span class="status-dot status-locked"></span>Locked'; // changes the finding status to locked
+                const latDir = data.lat >= 0 ? 'N' : 'S'; // if greater then 0 it north if not its south
+                const lonDir = data.lon >= 0 ? 'E' : 'W'; // if greater then 0 its east if not its west
+                document.getElementById('coords').innerText = Math.abs(data.lat).toFixed(6) + ' ' + latDir + ', ' + Math.abs(data.lon).toFixed(6) + ' ' + lonDir; // displays coord together
+                
+                // updates the satalite number and altitude from the json package
                 document.getElementById('alt').innerText = (data.alt || 0).toFixed(2) + ' m';
                 document.getElementById('sats').innerText = data.sats || 0;
 
-                // fallback time (since backend no longer sends h/m/s)
-                const now = new Date();
+                // displays the current satalite time
+                const now = new Date(); 
                 document.getElementById('gps-time').innerText = now.toUTCString().split(' ')[4];
 
+                // if the map exists add adjust the possition to the lat and lon retreived
                 if (map && marker && document.getElementById('page2').style.display === 'block') {
                     marker.setLatLng([data.lat, data.lon]);
                     map.panTo([data.lat, data.lon]);
-                    // record for field mapping
-                    if (fieldTracking) {
+                    
+                    if (fieldTracking) {   // if teh feild tracking button is active add the coords to the polygon vector to draw the map
                         fieldCoords.push([data.lat, data.lon]);
                         if (fieldPolygon) {
                             fieldPolygon.setLatLngs(fieldCoords);
                         }
-                        else {
+                        else { // if polygon doesnt exist make it then add the coords
                             fieldPolygon = L.polygon(fieldCoords,{color:'yellow'}).addTo(map);
                         }
                     }
                 }
             }
-            else {
+            else { // if data isnt valid set keep finding animation and fille values with zeros 
                 document.getElementById('gps-status').innerHTML ='Finding<span class="dots"></span>';
                 document.getElementById('coords').innerText ='0.000000 N, 0.000000 W';
                 document.getElementById('gps-time').innerText ='00:00:00';
                 document.getElementById('sats').innerText = data.satellites || data.sats || 0;
             }
         })
-    .catch(err => console.error('Fetch error:', err));
+    .catch(err => console.error('Fetch error:', err)); // get errors for debugging 
     }
-    setInterval(updateStatus, 1000);
+    setInterval(updateStatus, 1000); // add a delay before update happens again to give way for other funtions to execute
 
     function getPlantsFromItem(item) {
         if (Array.isArray(item.plants)) {
