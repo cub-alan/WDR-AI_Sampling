@@ -840,8 +840,9 @@ h1{ /* title text styling */
                 div.style.borderRadius = "8px";
                 div.style.color = "#fff";
                 div.style.cursor = "pointer";
-
-                div.innerHTML = ` // create the html for the file header and name with the timestamp and weed found
+                
+                // create the html for the file header and name with the timestamp and weed found
+                div.innerHTML = ` 
                     <div>
                         ${item.timestamp || "Unknown time"} —
                         ${plants.length > 0 ? plants.map(p => p.type).join(", ") : "None"}
@@ -891,8 +892,8 @@ h1{ /* title text styling */
                 confidence: null
             }));
         }
-
-        container.innerHTML = ` // creaetes the layout container for all of the file info 
+        // creaetes the layout container for all of the file info 
+        container.innerHTML = `
             <div class="data-card">
                 <div class="label">Timestamp</div>
                 <div class="value">${item.timestamp || "N/A"}</div>
