@@ -742,11 +742,11 @@ h1{ /* title text styling */
     setInterval(updateStatus, 1000); // add a delay before update happens again to give way for other funtions to execute
 
     function getPlantsFromItem(item) {
-        if (Array.isArray(item.plants)) {
+        if (Array.isArray(item.plants)) { // if the plants intem array is correct exit function
             return item.plants;
         }
 
-        if (typeof item.labels === "string") {
+        if (typeof item.labels === "string") { // if its a string rater then an array parse it to turn it into an array and return it
             return item.labels.split(",").map(label => ({
                 type: label.replace(/.*:/, "").trim(),
                 confidence: null
@@ -757,36 +757,37 @@ h1{ /* title text styling */
     }
 
     function updateWeedPins() {
-        if (!map) return;
+        if (!map) return; // if map doesnt exist skip this function
 
-        fetch('/api/detections')
+        fetch('/api/detections') // retrieve the detection info
         .then(r => r.json())
         .then(list => {
-            // remove old weed pins
-            weedMarkers.forEach(m => map.removeLayer(m));
+            
+            // remove all old detections and reinitialise the weed markers
+            weedMarkers.forEach(m => map.removeLayer(m)); 
             weedMarkers = [];
 
-            if (!Array.isArray(list)) return;
+            if (!Array.isArray(list)) return; // if list isnt in array format skip the function 
 
             list.forEach(item => {
+                // get the lat and lon from the gnss
                 const lat = Number(item.lat);
                 const lon = Number(item.lon);
 
-                // ignore invalid GPS points
-                if (!lat || !lon || lat === 0 || lon === 0) return;
+                if (!lat || !lon || lat === 0 || lon === 0) return; // there is no valid positioning data then skip the function
 
-                const plants = getPlantsFromItem(item);
+                const plants = getPlantsFromItem(item); // get the plants from teh item array
 
-                const plantText = plants.length > 0
+                const plantText = plants.length > 0 // chekcs that the palnt exists and then works out the percentage of the confidence 
                     ? plants.map(p => {
                         const conf = p.confidence != null
                             ? ` (${(p.confidence * 100).toFixed(1)}%)`
                             : "";
                         return `${p.type}${conf}`;
-                    }).join("<br>")
+                    }).join("<br>") // if no cofidence break the popup and label it unkown
                     : "Unknown weed";
 
-                const popup = `
+                const popup = ` // define a pop up as all data from a specific pin
                     <b>Weed detected</b><br>
                     <b>Time:</b> ${item.timestamp || "N/A"}<br>
                     <b>Camera:</b> ${item.cam || "N/A"}<br>
@@ -794,44 +795,45 @@ h1{ /* title text styling */
                     <b>Lat:</b> ${lat.toFixed(6)}<br>
                     <b>Lon:</b> ${lon.toFixed(6)}
                 `;
-
+                
+                // add the pin to the variable as a popup 
                 const weedMarker = L.marker([lat, lon]).addTo(map);
                 weedMarker.bindPopup(popup);
 
-                weedMarkers.push(weedMarker);
+                weedMarkers.push(weedMarker); // push the variable to the map 
             });
         })
-        .catch(err => console.error("Weed pin fetch error:", err));
+        .catch(err => console.error("Weed pin fetch error:", err)); // if an error occurs send debug data
     }
 
     function fetchArchive() {
         console.log("fetchArchive() running");
 
-        fetch('/api/detections')
+        fetch('/api/detections') // retrieve the detection info
         .then(r => r.json())
         .then(list => {
             console.log("Archive data received:", list);
 
-            const container = document.getElementById('archive-list');
-            container.innerHTML = '';
+            const container = document.getElementById('archive-list'); // create the archeive container
+            container.innerHTML = ''; // create a variable for archeive display
 
-            if (!Array.isArray(list) || list.length === 0) {
+            if (!Array.isArray(list) || list.length === 0) { // if list isnt an array write to the container no detections and return 
                 container.innerHTML = "<div style='color:#666;padding:10px;'>No detections yet</div>";
                 return;
             }
 
-            let shownCount = 0;
+            let shownCount = 0; // create a counter
 
-            list.forEach(item => {
-                const plants = getPlantsFromItem(item);
+            list.forEach(item => {  // loop through every detection
+                const plants = getPlantsFromItem(item); // get plant name
 
-                if (selectedPlants.size > 0) {
+                if (selectedPlants.size > 0) { // checks the plant againsth the filter to see if it is wanted if not return
                     const match = plants.some(p => selectedPlants.has(p.type));
                     if (!match) return;
                 }
 
-                const div = document.createElement('div');
-
+                // create a new file for the plant of set visuals
+                const div = document.createElement('div'); 
                 div.style.background = "#111";
                 div.style.padding = "10px";
                 div.style.border = "1px solid #222";
@@ -839,27 +841,28 @@ h1{ /* title text styling */
                 div.style.color = "#fff";
                 div.style.cursor = "pointer";
 
-                div.innerHTML = `
+                div.innerHTML = ` // create the html for the file header and name with the timestamp and weed found
                     <div>
                         ${item.timestamp || "Unknown time"} —
                         ${plants.length > 0 ? plants.map(p => p.type).join(", ") : "None"}
                     </div>
                 `;
 
-                div.onclick = () => openArchiveItem({
+                div.onclick = () => openArchiveItem({ // open the file when clicked
                     ...item,
                     plants: plants
                 });
 
+                // add the card to the archeive and add one to the counter
                 container.appendChild(div);
                 shownCount++;
             });
 
-            if (shownCount === 0) {
+            if (shownCount === 0) { //if nothing is found show the no matching detection on the archeive container
                 container.innerHTML = "<div style='color:#666;padding:10px;'>No matching detections</div>";
             }
         })
-        .catch(err => {
+        .catch(err => { // if there is an error get debug data and display on contaier the error message
             console.error("Archive fetch error:", err);
 
             const container = document.getElementById('archive-list');
@@ -868,27 +871,28 @@ h1{ /* title text styling */
     }
 
     function openArchiveItem(item) {
+        // open the file veiw and close the archeive veiw
         document.getElementById('archive-view').style.display = 'none';
         document.getElementById('page3-detail').style.display = 'block';
 
-        const container = document.getElementById('detail-content');
+        // create the container for the file contents
+        const container = document.getElementById('detail-content'); 
 
         console.log("OPEN ITEM:", item);
 
         let plants = [];
 
-        // SAFE NORMALISATION
-        if (Array.isArray(item.plants)) {
+        if (Array.isArray(item.plants)) { // if item is an array then get the plant from the array
             plants = item.plants;
         } 
-        else if (typeof item.labels === "string") {
+        else if (typeof item.labels === "string") { //  if its a string and not an array attempt to parse to get the plant
             plants = item.labels.split(",").map(label => ({
                 type: label.replace(/.*:/, "").trim(), // removes "Cam1:"
                 confidence: null
             }));
         }
 
-        container.innerHTML = `
+        container.innerHTML = ` // creaetes the layout container for all of the file info 
             <div class="data-card">
                 <div class="label">Timestamp</div>
                 <div class="value">${item.timestamp || "N/A"}</div>
